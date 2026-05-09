@@ -24,6 +24,7 @@ jobs:
             generate-documentation \
             --target SwiftyChain \
             --output-path ./docs \
+            --warnings-as-errors \
             --transform-for-static-hosting \
             --hosting-base-path SwiftyChain
       - name: Upload Pages artifact
