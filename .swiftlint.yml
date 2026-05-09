@@ -1,0 +1,11 @@
+included:
+  - Package.swift
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - .swiftpm
+
+trailing_comma:
+  mandatory_comma: true

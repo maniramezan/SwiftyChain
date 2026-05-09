@@ -57,7 +57,7 @@ func keychainKeyMacroDiagnosesInvalidSynchronizableAccessibility() {
             DiagnosticSpec(
                 message: "'ThisDeviceOnly' accessibility and isSynchronizable: true are mutually exclusive",
                 line: 1,
-                column: 32
+                column: 32,
             )
         ],
         macros: testMacros
@@ -181,7 +181,7 @@ func keychainScopeMacroDiagnosesEmptyService() {
             DiagnosticSpec(
                 message: "service must be a non-empty string literal",
                 line: 1,
-                column: 1
+                column: 1,
             )
         ],
         macros: testMacros

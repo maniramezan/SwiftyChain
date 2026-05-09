@@ -11,50 +11,64 @@ permissions:
 
 jobs:
   build-test:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode 26.4.1
+        run: sudo xcode-select -s /Applications/Xcode_26.4.1.app/Contents/Developer
+
       - name: Restore SwiftPM caches
         uses: actions/cache@v5
         with:
           path: |
             .build
-            .swiftpm
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
+
+      - name: Lint
+        run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
+
       - name: Build
-        run: swift build -Xswiftc -warnings-as-errors
+        run: xcrun swift build -Xswiftc -warnings-as-errors
+
       - name: Test
-        run: swift test -Xswiftc -warnings-as-errors --enable-code-coverage
+        run: xcrun swift test -Xswiftc -warnings-as-errors --enable-code-coverage
+
       - name: Generate coverage report
         run: |
+          BIN_PATH=$(xcrun swift build --show-bin-path)
           xcrun llvm-cov report \
-            .build/debug/SwiftyChainPackageTests.xctest/Contents/MacOS/SwiftyChainPackageTests \
-            -instr-profile .build/debug/codecov/default.profdata \
+            "${BIN_PATH}/SwiftyChainPackageTests.xctest/Contents/MacOS/SwiftyChainPackageTests" \
+            -instr-profile "${BIN_PATH}/codecov/default.profdata" \
             --ignore-filename-regex='.build|Tests'
 
   documentation:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode 26.4.1
+        run: sudo xcode-select -s /Applications/Xcode_26.4.1.app/Contents/Developer
+
       - name: Restore SwiftPM caches
         uses: actions/cache@v5
         with:
           path: |
             .build
-            .swiftpm
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swiftpm-docs-
-            ${{ runner.os }}-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
+
       - name: Build documentation
         run: |
-          swift package generate-documentation \
+          xcrun swift package generate-documentation \
             --target SwiftyChain \
             --warnings-as-errors \
             --disable-indexing

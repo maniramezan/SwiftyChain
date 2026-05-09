@@ -74,6 +74,9 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         try mapStatus(status)
     }
 
+    // This keychain query is assembled from many optional fields on purpose.
+    // Keeping the mapping centralized avoids diverging Security.framework call sites.
+    // swiftlint:disable cyclomatic_complexity
     private func secQuery(from query: KeychainQuery) -> [String: Any] {
         var attributes: [String: Any] = [
             kSecClass as String: query.itemClass.secValue
@@ -115,6 +118,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
 
         return attributes
     }
+    // swiftlint:enable cyclomatic_complexity
 
     private func attributes(from dictionary: [String: Any]) -> [KeychainAttribute] {
         var values: [KeychainAttribute] = []
