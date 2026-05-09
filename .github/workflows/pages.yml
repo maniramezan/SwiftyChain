@@ -45,6 +45,23 @@ jobs:
             --transform-for-static-hosting \
             --hosting-base-path "${{ steps.pages.outputs.base_path }}"
 
+      - name: Add root redirect to documentation
+        run: |
+          cat > ./docs/index.html <<'EOF'
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <meta http-equiv="refresh" content="0; url=documentation/swiftychain">
+              <link rel="canonical" href="documentation/swiftychain">
+              <title>SwiftyChain Documentation</title>
+            </head>
+            <body>
+              <p>Redirecting to <a href="documentation/swiftychain">SwiftyChain documentation</a>…</p>
+            </body>
+          </html>
+          EOF
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
