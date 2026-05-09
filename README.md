@@ -1,5 +1,7 @@
 # SwiftyChain
 
+[![Docs](https://img.shields.io/badge/docs-GitHub_Pages-0969da?logo=github)](https://maniramezan.github.io/SwiftyChain/)
+
 SwiftyChain is a Swift 6.3 keychain wrapper for Apple platforms. It provides a typed `Keychain` actor for async-safe access and an `@KeychainStorage` property wrapper for simple optional values.
 
 ## Quick Start
