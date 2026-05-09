@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test --enable-code-coverage
+      - name: Generate coverage report
+        run: |
+          xcrun llvm-cov report \
+            .build/debug/SwiftyChainPackageTests.xctest/Contents/MacOS/SwiftyChainPackageTests \
+            -instr-profile .build/debug/codecov/default.profdata \
+            --ignore-filename-regex='.build|Tests'
+
+  documentation:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build documentation
+        run: |
+          swift package generate-documentation \
+            --target SwiftyChain \
+            --disable-indexing \
+            --warnings-as-errors
