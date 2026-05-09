@@ -1,11 +1,74 @@
 @Tutorial(time: 10) {
-    @Intro(title: "Getting Started") {
-        Use SwiftyChain to save and load a typed secret.
+    @Intro(title: "Getting Started with SwiftyChain") {
+        Learn how to save, load, and delete typed secrets in the keychain
+        using SwiftyChain's actor-based API.
     }
 
-    @Section(title: "Save a Token") {
+    @Section(title: "Define a Key") {
         @ContentAndMedia {
-            Create a `KeychainKey` and call the `Keychain` actor.
+            A ``KeychainKey`` describes *where* and *how* a value is stored.
+            The generic parameter tells SwiftyChain what type to expect.
+        }
+
+        @Steps {
+            @Step {
+                Import SwiftyChain and define a key for an API token.
+
+                @Code(name: "TokenKey.swift", file: "getting-started-01.swift")
+            }
+        }
+    }
+
+    @Section(title: "Save and Load a Value") {
+        @ContentAndMedia {
+            Use the shared ``Keychain`` actor to persist values.
+            Every call is `async` because `Keychain` is an actor.
+        }
+
+        @Steps {
+            @Step {
+                Save a token string to the keychain.
+
+                @Code(name: "SaveToken.swift", file: "getting-started-02.swift")
+            }
+
+            @Step {
+                Load the token back, handling the case where it may not exist.
+
+                @Code(name: "LoadToken.swift", file: "getting-started-03.swift")
+            }
+        }
+    }
+
+    @Section(title: "Use the Property Wrapper") {
+        @ContentAndMedia {
+            For synchronous, `@AppStorage`-style access, use
+            ``KeychainStorage``. It reads and writes directly without
+            going through the actor.
+        }
+
+        @Steps {
+            @Step {
+                Declare a `@KeychainStorage` property and read or write it
+                like any optional.
+
+                @Code(name: "PropertyWrapper.swift", file: "getting-started-04.swift")
+            }
+        }
+    }
+
+    @Section(title: "Delete Items") {
+        @ContentAndMedia {
+            Remove individual items by key, or bulk-delete all items
+            for a service.
+        }
+
+        @Steps {
+            @Step {
+                Delete a single item and then clear all items for a service.
+
+                @Code(name: "Delete.swift", file: "getting-started-05.swift")
+            }
         }
     }
 }

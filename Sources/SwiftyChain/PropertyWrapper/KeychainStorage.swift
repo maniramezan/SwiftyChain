@@ -4,7 +4,7 @@ import Security
 ///
 /// - Important: `@KeychainStorage` bypasses the `Keychain` actor and accesses the keychain directly.
 ///   This means writes through `@KeychainStorage` will **not** trigger observation events from
-///   ``Keychain/observeKeychainChanges(service:accessGroup:)``. If you need change notifications,
+///   `Keychain/observeKeychainChanges(service:accessGroup:)`. If you need change notifications,
 ///   use `Keychain.shared` methods instead.
 @propertyWrapper
 public struct KeychainStorage<Value: KeychainStorable>: Sendable {

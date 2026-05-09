@@ -1,0 +1,11 @@
+@Tutorials(name: "SwiftyChain") {
+    @Intro(title: "Meet SwiftyChain") {
+        Learn how to use SwiftyChain to securely store and retrieve
+        typed values in the Apple keychain.
+    }
+
+    @Chapter(name: "Getting Started") {
+        @Image(source: "chapter-getting-started.png", alt: "Getting started with SwiftyChain")
+        @TutorialReference(tutorial: "doc:GettingStarted")
+    }
+}
