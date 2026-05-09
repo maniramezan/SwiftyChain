@@ -6,11 +6,25 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SwiftPM caches
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build
+            .swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
       - name: Build
         run: swift build -Xswiftc -warnings-as-errors
       - name: Test
@@ -26,6 +40,18 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SwiftPM caches
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build
+            .swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-docs-
+            ${{ runner.os }}-swiftpm-
       - name: Build documentation
         run: |
           swift package generate-documentation \
