@@ -22,8 +22,8 @@ let package = Package(
         "observation",
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", exact: "603.0.1"),
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", exact: "1.5.0"),
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.1"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0"),
     ],
     targets: [
         .target(
