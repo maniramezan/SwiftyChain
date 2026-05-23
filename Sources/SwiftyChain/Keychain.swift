@@ -11,7 +11,7 @@ public actor Keychain {
         case bulkDeleted
     }
 
-    private let backend: any SecureStorageBackend
+    internal let backend: any SecureStorageBackend
     #if Observation
         private var observers: [UUID: Observer] = [:]
     #endif
@@ -25,12 +25,12 @@ public actor Keychain {
     }
 
     public func save<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        try backend.add(query(for: key), data: value.keychainData())
+        try backend.add(addQuery(for: key), data: value.keychainData())
         notify(service: key.service, account: key.account, kind: .saved)
     }
 
     public func load<T: KeychainStorable>(key: KeychainKey<T>) throws -> T {
-        let result = try backend.copyMatching(query(for: key, returnData: true))
+        let result = try backend.copyMatching(identityQuery(for: key, returnData: true))
         guard case .data(let data) = result else {
             throw KeychainError.unexpectedData
         }
@@ -47,7 +47,7 @@ public actor Keychain {
 
     public func update<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
         try backend.update(
-            matching: query(for: key),
+            matching: identityQuery(for: key),
             to: KeychainAttributes(
                 data: try value.keychainData(),
                 label: key.label,
@@ -67,7 +67,7 @@ public actor Keychain {
     }
 
     public func delete<T: KeychainStorable>(key: KeychainKey<T>) throws {
-        try backend.delete(matching: query(for: key))
+        try backend.delete(matching: identityQuery(for: key))
         notify(service: key.service, account: key.account, kind: .deleted)
     }
 
@@ -103,7 +103,7 @@ public actor Keychain {
 
     public func exists<T: KeychainStorable>(key: KeychainKey<T>) throws -> Bool {
         do {
-            _ = try backend.copyMatching(query(for: key))
+            _ = try backend.copyMatching(identityQuery(for: key))
             return true
         } catch KeychainError.itemNotFound {
             return false
@@ -111,15 +111,20 @@ public actor Keychain {
     }
 
     public func allAccounts(service: String, accessGroup: String? = nil) throws -> [String] {
-        let result = try backend.copyMatching(
-            KeychainQuery(
-                itemClass: .genericPassword,
-                service: service,
-                accessGroup: accessGroup,
-                returnAttributes: true,
-                matchLimit: .all
+        let result: KeychainQueryResult
+        do {
+            result = try backend.copyMatching(
+                KeychainQuery(
+                    itemClass: .genericPassword,
+                    service: service,
+                    accessGroup: accessGroup,
+                    returnAttributes: true,
+                    matchLimit: .all
+                )
             )
-        )
+        } catch KeychainError.itemNotFound {
+            return []
+        }
         guard case .items(let items) = result else {
             throw KeychainError.unexpectedData
         }
@@ -133,13 +138,12 @@ public actor Keychain {
     }
 
     public func saveInternetPassword(_ password: String, for key: InternetPasswordKey) throws {
-        let query = internetQuery(for: key, accessibility: key.accessibility)
-        try backend.add(query, data: password.keychainData())
+        try backend.add(internetAddQuery(for: key), data: password.keychainData())
         notify(service: key.server, account: key.account, kind: .saved)
     }
 
     public func loadInternetPassword(for key: InternetPasswordKey) throws -> String {
-        let result = try backend.copyMatching(internetQuery(for: key, returnData: true))
+        let result = try backend.copyMatching(internetIdentityQuery(for: key, returnData: true))
         guard case .data(let data) = result else {
             throw KeychainError.unexpectedData
         }
@@ -147,7 +151,7 @@ public actor Keychain {
     }
 
     public func deleteInternetPassword(for key: InternetPasswordKey) throws {
-        try backend.delete(matching: internetQuery(for: key))
+        try backend.delete(matching: internetIdentityQuery(for: key))
         notify(service: key.server, account: key.account, kind: .deleted)
     }
 
@@ -192,7 +196,11 @@ public actor Keychain {
         private func notify(service: String, account: String?, kind: MutationKind) {}
     #endif
 
-    private func query<T: KeychainStorable>(
+    // Identity-only query: includes the attributes Apple's Security framework
+    // uses to match an existing item (class + service + account + accessGroup +
+    // synchronizable). Used for load/update/delete/exists so non-identity
+    // attributes like label, comment, or accessibility don't break the match.
+    private func identityQuery<T: KeychainStorable>(
         for key: KeychainKey<T>,
         returnData: Bool = false,
         returnAttributes: Bool = false
@@ -202,26 +210,50 @@ public actor Keychain {
             service: key.service,
             account: key.account,
             accessGroup: key.accessGroup,
-            accessibility: key.accessibility,
             isSynchronizable: key.isSynchronizable,
             returnData: returnData,
-            returnAttributes: returnAttributes,
+            returnAttributes: returnAttributes
+        )
+    }
+
+    // Full query for SecItemAdd: writes accessibility, label, and comment as
+    // attributes alongside the identity fields.
+    private func addQuery<T: KeychainStorable>(for key: KeychainKey<T>) -> KeychainQuery {
+        KeychainQuery(
+            itemClass: .genericPassword,
+            service: key.service,
+            account: key.account,
+            accessGroup: key.accessGroup,
+            accessibility: key.accessibility,
+            isSynchronizable: key.isSynchronizable,
             label: key.label,
             comment: key.comment
         )
     }
 
-    private func internetQuery(
+    private func internetIdentityQuery(
         for key: InternetPasswordKey,
-        returnData: Bool = false,
-        accessibility: KeychainAccessibility? = nil
+        returnData: Bool = false
     ) -> KeychainQuery {
         KeychainQuery(
             itemClass: .internetPassword,
             account: key.account,
             accessGroup: key.accessGroup,
-            accessibility: accessibility,
             returnData: returnData,
+            server: key.server,
+            port: key.port,
+            path: key.path,
+            internetProtocol: key.protocol,
+            authenticationType: key.authenticationType
+        )
+    }
+
+    private func internetAddQuery(for key: InternetPasswordKey) -> KeychainQuery {
+        KeychainQuery(
+            itemClass: .internetPassword,
+            account: key.account,
+            accessGroup: key.accessGroup,
+            accessibility: key.accessibility,
             server: key.server,
             port: key.port,
             path: key.path,

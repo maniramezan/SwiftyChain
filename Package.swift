@@ -30,6 +30,11 @@ let package = Package(
             name: "SwiftyChain",
             dependencies: [
                 .target(name: "SwiftyChainMacros", condition: .when(traits: ["macros"]))
+            ],
+            swiftSettings: [
+                .define("Macros", .when(traits: ["macros"])),
+                .define("Cryptography", .when(traits: ["cryptography"])),
+                .define("Observation", .when(traits: ["observation"])),
             ]
         ),
         .macro(
@@ -44,7 +49,12 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftyChainTests",
-            dependencies: ["SwiftyChain"]
+            dependencies: ["SwiftyChain"],
+            swiftSettings: [
+                .define("Macros", .when(traits: ["macros"])),
+                .define("Cryptography", .when(traits: ["cryptography"])),
+                .define("Observation", .when(traits: ["observation"])),
+            ]
         ),
         .testTarget(
             name: "SwiftyChainMacrosTests",

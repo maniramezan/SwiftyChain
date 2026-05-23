@@ -67,12 +67,19 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
     }
 
     func delete(matching query: KeychainQuery) throws {
-        let status = SecItemDelete(secQuery(from: query) as CFDictionary)
-        if status == errSecItemNotFound {
-            return
+        // The macOS legacy keychain removes one matching item per
+        // SecItemDelete call, even when more match. Loop until the keychain
+        // reports no more matches so bulk deletes actually clear everything.
+        let attributes = secQuery(from: query) as CFDictionary
+        for _ in 0..<deleteSafetyCap {
+            let status = SecItemDelete(attributes)
+            if status == errSecItemNotFound { return }
+            try mapStatus(status)
         }
-        try mapStatus(status)
+        throw KeychainError.operationFailed(errSecInternalError)
     }
+
+    private var deleteSafetyCap: Int { 10_000 }
 
     // This keychain query is assembled from many optional fields on purpose.
     // Keeping the mapping centralized avoids diverging Security.framework call sites.
@@ -251,10 +258,10 @@ extension AuthenticationType {
             let status = SecItemCopyMatching(attributes as CFDictionary, &result)
             try mapStatus(status)
 
-            guard let secKey = result as? SecKey else {
+            guard let result, CFGetTypeID(result) == SecKeyGetTypeID() else {
                 throw KeychainError.unexpectedData
             }
-            return secKey
+            return result as! SecKey
         }
 
         func deleteCryptoKey(query: CryptoKeyQuery) throws {
