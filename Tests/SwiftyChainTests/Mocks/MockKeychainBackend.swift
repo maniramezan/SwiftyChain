@@ -1,14 +1,17 @@
 import Foundation
-
+import Security
 @testable import SwiftyChain
 
 final class MockKeychainStore: @unchecked Sendable {
     private let lock = NSLock()
     private var items: [KeychainQuery: Data] = [:]
+    #if Cryptography
+        private var cryptoKeys: [CryptoKeyQuery: SecKey] = [:]
+    #endif
 
     func add(_ query: KeychainQuery, data: Data) throws {
         let error: KeychainError? = lock.withLock {
-            if items[query] != nil {
+            if items.keys.contains(where: { $0.identityMatches(query) }) {
                 return KeychainError.duplicateItem
             }
             items[query] = data
@@ -53,6 +56,32 @@ final class MockKeychainStore: @unchecked Sendable {
             }
         }
     }
+
+    #if Cryptography
+        func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery) throws {
+            try lock.withLock {
+                if cryptoKeys[query] != nil {
+                    throw KeychainError.duplicateItem
+                }
+                cryptoKeys[query] = key
+            }
+        }
+
+        func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
+            try lock.withLock {
+                guard let key = cryptoKeys[query] else {
+                    throw KeychainError.itemNotFound
+                }
+                return key
+            }
+        }
+
+        func deleteCryptoKey(query: CryptoKeyQuery) throws {
+            lock.withLock {
+                _ = cryptoKeys.removeValue(forKey: query)
+            }
+        }
+    #endif
 }
 
 struct MockKeychainBackend: SecureStorageBackend {
@@ -79,6 +108,22 @@ struct MockKeychainBackend: SecureStorageBackend {
     }
 }
 
+#if Cryptography
+    extension MockKeychainBackend: CryptoStorageBackend {
+        func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery) throws {
+            try store.addCryptoKey(key, query: query)
+        }
+
+        func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
+            try store.loadCryptoKey(query: query)
+        }
+
+        func deleteCryptoKey(query: CryptoKeyQuery) throws {
+            try store.deleteCryptoKey(query: query)
+        }
+    }
+#endif
+
 extension KeychainQuery {
     fileprivate func matches(_ other: KeychainQuery) -> Bool {
         if itemClass != other.itemClass { return false }
@@ -94,5 +139,21 @@ extension KeychainQuery {
             return false
         }
         return true
+    }
+
+    // Matches the way Apple's keychain decides identity: same class + service
+    // + account + accessGroup + synchronizable means the same item, regardless
+    // of label/comment/accessibility differences.
+    fileprivate func identityMatches(_ other: KeychainQuery) -> Bool {
+        itemClass == other.itemClass
+            && service == other.service
+            && account == other.account
+            && accessGroup == other.accessGroup
+            && (isSynchronizable ?? false) == (other.isSynchronizable ?? false)
+            && server == other.server
+            && port == other.port
+            && path == other.path
+            && internetProtocol == other.internetProtocol
+            && authenticationType == other.authenticationType
     }
 }

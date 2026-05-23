@@ -166,6 +166,53 @@ func keychainScopeMacroExpandsDeleteAll() {
 }
 
 @Test
+func keychainItemMacroDiagnosesEmptyService() {
+    assertMacroExpansion(
+        """
+        struct AuthStore {
+            @KeychainItem(service: "", account: "token")
+            var authToken: String?
+        }
+        """,
+        expandedSource: """
+            struct AuthStore {
+                var authToken: String? {
+                    get async throws {
+                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                    }
+                }
+
+                fileprivate static let _authTokenKey = KeychainKey<String>(
+                    service: "",
+                    account: "token",
+                    accessGroup: nil,
+                    accessibility: .whenUnlocked,
+                    isSynchronizable: false,
+                    label: nil,
+                    comment: nil
+                )
+
+                func setAuthToken(_ newValue: String?) async throws {
+                    if let newValue {
+                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                    } else {
+                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                    }
+                }
+            }
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "service must be a non-empty string literal",
+                line: 2,
+                column: 5,
+            )
+        ],
+        macros: testMacros
+    )
+}
+
+@Test
 func keychainScopeMacroDiagnosesEmptyService() {
     assertMacroExpansion(
         """
