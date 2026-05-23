@@ -37,6 +37,7 @@ jobs:
       - name: Build DocC site
         run: |
           xcrun swift package \
+            --traits "macros,cryptography,observation" \
             --allow-writing-to-directory ./docs \
             generate-documentation \
             --target SwiftyChain \

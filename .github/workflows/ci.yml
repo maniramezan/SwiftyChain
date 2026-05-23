@@ -9,14 +9,31 @@ on:
 permissions:
   contents: read
 
+env:
+  XCODE_PATH: /Applications/Xcode_26.4.1.app/Contents/Developer
+  TRAITS: "macros,cryptography,observation"
+  COVERAGE_MIN: "80"
+
 jobs:
-  build-test:
+  lint:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
 
       - name: Select Xcode 26.4.1
-        run: sudo xcode-select -s /Applications/Xcode_26.4.1.app/Contents/Developer
+        run: sudo xcode-select -s "${XCODE_PATH}"
+
+      - name: Lint with swift-format --strict
+        run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
+
+  build-test:
+    runs-on: macos-26
+    needs: lint
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode 26.4.1
+        run: sudo xcode-select -s "${XCODE_PATH}"
 
       - name: Restore SwiftPM caches
         uses: actions/cache@v5
@@ -29,30 +46,75 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
 
-      - name: Lint
-        run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
-
-      - name: Build
+      - name: Build (default traits)
         run: xcrun swift build -Xswiftc -warnings-as-errors
 
-      - name: Test
-        run: xcrun swift test -Xswiftc -warnings-as-errors --enable-code-coverage
+      - name: Test (default traits)
+        run: xcrun swift test -Xswiftc -warnings-as-errors
+
+      - name: Build (all traits)
+        run: xcrun swift build --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Test (all traits + real-keychain integration, with coverage)
+        env:
+          SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION: "1"
+        run: |
+          xcrun swift test \
+            --traits "${TRAITS}" \
+            -Xswiftc -warnings-as-errors \
+            --enable-code-coverage
 
       - name: Generate coverage report
+        id: coverage
         run: |
-          BIN_PATH=$(xcrun swift build --show-bin-path)
+          BIN_PATH=$(xcrun swift build --traits "${TRAITS}" --show-bin-path)
           xcrun llvm-cov report \
             "${BIN_PATH}/SwiftyChainPackageTests.xctest/Contents/MacOS/SwiftyChainPackageTests" \
             -instr-profile "${BIN_PATH}/codecov/default.profdata" \
-            --ignore-filename-regex='.build|Tests'
+            --ignore-filename-regex='.build|Tests|SwiftyChainMacrosPlugin' \
+            | tee coverage-report.txt
+          xcrun llvm-cov export \
+            "${BIN_PATH}/SwiftyChainPackageTests.xctest/Contents/MacOS/SwiftyChainPackageTests" \
+            -instr-profile "${BIN_PATH}/codecov/default.profdata" \
+            --ignore-filename-regex='.build|Tests|SwiftyChainMacrosPlugin' \
+            --format=lcov \
+            > coverage.lcov
+
+      - name: Enforce coverage threshold
+        run: |
+          totals=$(grep -E '^TOTAL' coverage-report.txt)
+          if [ -z "$totals" ]; then
+            echo "::error::Could not find TOTAL line in coverage report" >&2
+            exit 1
+          fi
+          # llvm-cov report TOTAL columns (1-indexed):
+          # 1=TOTAL, 2=regions, 3=missed_regions, 4=region_cov%,
+          # 5=functions, 6=missed_functions, 7=function_cov%,
+          # 8=lines, 9=missed_lines, 10=line_cov%
+          line_cov=$(echo "$totals" | awk '{ gsub(/%/,"",$10); print $10 }')
+          echo "Line coverage: ${line_cov}% (minimum: ${COVERAGE_MIN}%)"
+          awk -v cov="$line_cov" -v min="$COVERAGE_MIN" 'BEGIN { if (cov+0 < min+0) { exit 1 } }' || {
+            echo "::error::Line coverage ${line_cov}% is below the required minimum of ${COVERAGE_MIN}%" >&2
+            exit 1
+          }
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: |
+            coverage-report.txt
+            coverage.lcov
 
   documentation:
     runs-on: macos-26
+    needs: lint
     steps:
       - uses: actions/checkout@v6
 
       - name: Select Xcode 26.4.1
-        run: sudo xcode-select -s /Applications/Xcode_26.4.1.app/Contents/Developer
+        run: sudo xcode-select -s "${XCODE_PATH}"
 
       - name: Restore SwiftPM caches
         uses: actions/cache@v5
@@ -66,9 +128,18 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
 
-      - name: Build documentation
+      - name: Build documentation (default traits)
         run: |
           xcrun swift package generate-documentation \
+            --target SwiftyChain \
+            --warnings-as-errors \
+            --disable-indexing
+
+      - name: Build documentation (all traits)
+        run: |
+          xcrun swift package \
+            --traits "${TRAITS}" \
+            generate-documentation \
             --target SwiftyChain \
             --warnings-as-errors \
             --disable-indexing
