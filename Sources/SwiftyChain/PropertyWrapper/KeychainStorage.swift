@@ -1,22 +1,50 @@
+import Foundation
 import Security
 
-/// Synchronous `@AppStorage`-style access to optional keychain values.
+/// Synchronous, `@AppStorage`-shaped access to a single optional keychain value.
 ///
-/// - Important: `@KeychainStorage` bypasses the `Keychain` actor and accesses the keychain directly.
-///   This means writes through `@KeychainStorage` will **not** trigger observation events from
-///   `Keychain/observeKeychainChanges(service:accessGroup:)`. If you need change notifications,
-///   use `Keychain.shared` methods instead.
+/// Reads and writes go directly to the keychain (not through the ``Keychain`` actor),
+/// so writes through `@KeychainStorage` do **not** emit observation events from
+/// ``Keychain/observeKeychainChanges(service:accessGroup:)``. Use ``Keychain/shared``
+/// directly when you need change notifications.
+///
+/// The projected value (`$property`) exposes the last ``KeychainError``, if any.
+/// Both the wrapped getter and setter are non-mutating, so the wrapper can be
+/// stored inside `let` values and read from non-mutating contexts.
 @propertyWrapper
-public struct KeychainStorage<Value: KeychainStorable>: Sendable {
+public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     private let key: KeychainKey<Value>
     private let backend: any SecureStorageBackend
     private let defaultValue: Value?
+    private let errorBox: ErrorBox
 
-    public private(set) var projectedValue: KeychainError?
+    public var projectedValue: KeychainError? {
+        errorBox.value
+    }
 
     public init(
         _ account: String,
         service: String,
+        accessGroup: String? = nil,
+        accessibility: KeychainAccessibility = .whenUnlocked,
+        isSynchronizable: Bool = false,
+        defaultValue: Value? = nil
+    ) {
+        self.init(
+            account,
+            service: service,
+            backend: AppleKeychainBackend(),
+            accessGroup: accessGroup,
+            accessibility: accessibility,
+            isSynchronizable: isSynchronizable,
+            defaultValue: defaultValue
+        )
+    }
+
+    internal init(
+        _ account: String,
+        service: String,
+        backend: any SecureStorageBackend,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility = .whenUnlocked,
         isSynchronizable: Bool = false,
@@ -29,39 +57,39 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
             accessibility: accessibility,
             isSynchronizable: isSynchronizable
         )
-        self.backend = AppleKeychainBackend()
+        self.backend = backend
         self.defaultValue = defaultValue
-        self.projectedValue = nil
+        self.errorBox = ErrorBox()
     }
 
     public var wrappedValue: Value? {
-        mutating get {
+        get {
             do {
-                let result = try backend.copyMatching(query(returnData: true))
+                let result = try backend.copyMatching(identityQuery(returnData: true))
                 guard case .data(let data) = result else {
                     throw KeychainError.unexpectedData
                 }
-                projectedValue = nil
+                errorBox.value = nil
                 return try Value.fromKeychainData(data)
             } catch KeychainError.itemNotFound {
-                projectedValue = nil
+                errorBox.value = nil
                 return defaultValue
             } catch let error as KeychainError {
-                projectedValue = error
+                errorBox.value = error
                 return defaultValue
             } catch {
-                projectedValue = .unexpectedData
+                errorBox.value = .unexpectedData
                 return defaultValue
             }
         }
-        mutating set {
+        nonmutating set {
             do {
                 if let newValue {
                     do {
-                        try backend.add(query(), data: newValue.keychainData())
+                        try backend.add(addQuery(), data: newValue.keychainData())
                     } catch KeychainError.duplicateItem {
                         try backend.update(
-                            matching: query(),
+                            matching: identityQuery(),
                             to: KeychainAttributes(
                                 data: try newValue.keychainData(),
                                 label: key.label,
@@ -71,18 +99,29 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
                         )
                     }
                 } else {
-                    try backend.delete(matching: query())
+                    try backend.delete(matching: identityQuery())
                 }
-                projectedValue = nil
+                errorBox.value = nil
             } catch let error as KeychainError {
-                projectedValue = error
+                errorBox.value = error
             } catch {
-                projectedValue = .unexpectedData
+                errorBox.value = .unexpectedData
             }
         }
     }
 
-    private func query(returnData: Bool = false) -> KeychainQuery {
+    private func identityQuery(returnData: Bool = false) -> KeychainQuery {
+        KeychainQuery(
+            itemClass: .genericPassword,
+            service: key.service,
+            account: key.account,
+            accessGroup: key.accessGroup,
+            isSynchronizable: key.isSynchronizable,
+            returnData: returnData
+        )
+    }
+
+    private func addQuery() -> KeychainQuery {
         KeychainQuery(
             itemClass: .genericPassword,
             service: key.service,
@@ -90,7 +129,18 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
             accessGroup: key.accessGroup,
             accessibility: key.accessibility,
             isSynchronizable: key.isSynchronizable,
-            returnData: returnData
+            label: key.label,
+            comment: key.comment
         )
+    }
+
+    private final class ErrorBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value: KeychainError?
+
+        var value: KeychainError? {
+            get { lock.withLock { _value } }
+            set { lock.withLock { _value = newValue } }
+        }
     }
 }

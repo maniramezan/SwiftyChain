@@ -13,7 +13,7 @@
     @attached(accessor)
     @attached(peer, names: prefixed(_), arbitrary)
     public macro KeychainItem(
-        service: String? = nil,
+        service: String,
         account: String,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility = .whenUnlocked,

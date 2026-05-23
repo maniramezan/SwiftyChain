@@ -52,6 +52,9 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
         if arguments?.stringLiteral(named: "account")?.isEmpty == true {
             context.diagnose(node, "account must be a non-empty string literal")
         }
+        if arguments?.stringLiteral(named: "service")?.isEmpty == true {
+            context.diagnose(node, "service must be a non-empty string literal")
+        }
 
         let name = identifier.identifier.text
         let type = typeAnnotation.type.trimmedDescription
