@@ -4,56 +4,61 @@ Reduce boilerplate with SwiftyChain's Swift macros.
 
 ## Overview
 
-SwiftyChain includes three macros that generate keychain plumbing at
-compile time. They require the `SwiftyChainMacros` module and Swift 5.9+.
+SwiftyChain ships three macros that generate keychain plumbing at compile
+time. They require the `macros` package trait to be enabled by consumers
+(see <doc:SwiftyChain>) and Swift 5.9+.
 
 ### @KeychainScope
 
-Annotate a class or struct to set a default service (and optional access
-group) for all keychain items declared inside it:
+Annotate a type to gain a shared instance and a `deleteAll()` helper that
+bulk-deletes every item stored under the given service:
 
 ```swift
 @KeychainScope(service: "com.example.app")
 final class Secrets {
-    @KeychainItem(account: "api-token")
+    @KeychainItem(service: "com.example.app", account: "api-token")
     var apiToken: String?
 
-    @KeychainItem(account: "refresh-token")
+    @KeychainItem(service: "com.example.app", account: "refresh-token")
     var refreshToken: String?
 }
+
+try await Secrets.shared.deleteAll()
 ```
 
-The macro generates the `KeychainKey` definitions and accessor code so you
-can read and write properties directly.
+The scope macro adds `static let shared = Self()` and `deleteAll()` to the
+annotated type. Each `@KeychainItem` still declares its own service
+explicitly so the generated `KeychainKey` is self-contained.
 
 ### @KeychainItem
 
-Attach to a stored property inside a `@KeychainScope` type. It generates:
-
-- A backing `KeychainKey` constant.
-- A computed getter and setter that call through to the keychain.
-
-You can override per-property settings:
+Attach to a stored property to generate a backing ``KeychainKey``, an
+`async throws` getter, and a `setXyz(_:)` async setter:
 
 ```swift
 @KeychainItem(
+    service: "com.example.app",
     account: "biometric-secret",
-    accessibility: .whenPasscodeSetThisDeviceOnly,
-    isSynchronizable: false
+    accessibility: .whenPasscodeSetThisDeviceOnly
 )
 var biometricSecret: Data?
 ```
 
+`service:` and `account:` must be non-empty string literals; the macro
+emits a compile-time diagnostic if either is empty. Optional properties
+generate a setter that deletes when assigned `nil`; non-optional
+properties always upsert.
+
 ### #keychainKey
 
-A freestanding expression macro that creates a ``KeychainKey`` inline:
+A freestanding expression macro that creates a ``KeychainKey`` inline and
+validates its string-literal arguments at compile time (for example,
+flagging `isSynchronizable: true` combined with a `ThisDeviceOnly`
+accessibility):
 
 ```swift
-let key = #keychainKey<String>(
+let key: KeychainKey<String> = #keychainKey(
     service: "com.example.app",
     account: "token"
 )
 ```
-
-This is equivalent to calling the `KeychainKey` initializer but can be
-extended in the future with compile-time validation.

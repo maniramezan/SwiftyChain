@@ -26,7 +26,15 @@ Core keychain support is dependency-free beyond `Security.framework`. Optional t
 ## Development
 
 ```bash
-swift build
-swift test
-swift-format lint --recursive Sources Tests
+xcrun swift build -Xswiftc -warnings-as-errors
+xcrun swift test -Xswiftc -warnings-as-errors --enable-code-coverage
+xcrun swift-format lint --recursive --strict Sources Tests Package.swift
 ```
+
+Optional features are guarded by traits. Enable them explicitly when building or testing:
+
+```bash
+xcrun swift test --traits "macros,observation,cryptography"
+```
+
+Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain.

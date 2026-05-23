@@ -19,6 +19,10 @@ let keychain = Keychain(backend: mock)
 
 ## Topics
 
+### Shared Instance
+
+- ``shared``
+
 ### Creating a Keychain
 
 - ``init()``
@@ -48,4 +52,8 @@ let keychain = Keychain(backend: mock)
 - ``saveInternetPassword(_:for:)``
 - ``loadInternetPassword(for:)``
 - ``deleteInternetPassword(for:)``
+
+### Observation
+
+- ``observeKeychainChanges(service:accessGroup:)``
 
