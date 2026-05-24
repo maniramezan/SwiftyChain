@@ -158,6 +158,99 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
     }
 }
 
+extension AppleKeychainBackend: KeychainBackend {
+    func save(
+        _ data: Data,
+        service: String,
+        account: String,
+        accessGroup: String?,
+        accessibility: KeychainAccessibility,
+        isSynchronizable: Bool,
+        label: String?,
+        comment: String?
+    ) throws {
+        try add(
+            KeychainQuery(
+                itemClass: .genericPassword,
+                service: service,
+                account: account,
+                accessGroup: accessGroup,
+                accessibility: accessibility,
+                isSynchronizable: isSynchronizable,
+                label: label,
+                comment: comment
+            ),
+            data: data
+        )
+    }
+
+    func load(
+        service: String,
+        account: String,
+        accessGroup: String?,
+        isSynchronizable: Bool
+    ) throws -> Data {
+        let result = try copyMatching(
+            KeychainQuery(
+                itemClass: .genericPassword,
+                service: service,
+                account: account,
+                accessGroup: accessGroup,
+                isSynchronizable: isSynchronizable,
+                returnData: true
+            )
+        )
+        guard case .data(let data) = result else {
+            throw KeychainError.unexpectedData
+        }
+        return data
+    }
+
+    func update(
+        _ data: Data,
+        service: String,
+        account: String,
+        accessGroup: String?,
+        accessibility: KeychainAccessibility,
+        isSynchronizable: Bool,
+        label: String?,
+        comment: String?
+    ) throws {
+        try update(
+            matching: KeychainQuery(
+                itemClass: .genericPassword,
+                service: service,
+                account: account,
+                accessGroup: accessGroup,
+                isSynchronizable: isSynchronizable
+            ),
+            to: KeychainAttributes(
+                data: data,
+                label: label,
+                comment: comment,
+                accessibility: accessibility
+            )
+        )
+    }
+
+    func delete(
+        service: String,
+        account: String,
+        accessGroup: String?,
+        isSynchronizable: Bool
+    ) throws {
+        try delete(
+            matching: KeychainQuery(
+                itemClass: .genericPassword,
+                service: service,
+                account: account,
+                accessGroup: accessGroup,
+                isSynchronizable: isSynchronizable
+            )
+        )
+    }
+}
+
 extension MatchLimit {
     fileprivate var secValue: CFString {
         switch self {

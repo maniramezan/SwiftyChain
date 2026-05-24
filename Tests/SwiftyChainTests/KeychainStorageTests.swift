@@ -1,11 +1,11 @@
 import Foundation
 import Testing
-
-@testable import SwiftyChain
+import SwiftyChain
+import SwiftyChainTesting
 
 @Test
 func keychainStorageRoundTripsViaPropertyWrapper() throws {
-    let backend = MockKeychainBackend()
+    let backend = InMemoryKeychainBackend()
     let storage = KeychainStorage<String>("token", service: "tests", backend: backend)
 
     #expect(storage.wrappedValue == nil)
@@ -32,7 +32,7 @@ func keychainStorageReportsErrorsOnProjectedValue() throws {
 
 @Test
 func keychainStorageReturnsDefaultWhenMissing() throws {
-    let backend = MockKeychainBackend()
+    let backend = InMemoryKeychainBackend()
     let storage = KeychainStorage<String>(
         "missing",
         service: "tests",
@@ -46,26 +46,44 @@ func keychainStorageReturnsDefaultWhenMissing() throws {
 
 @Test
 func keychainStorageWorksOnLetValue() throws {
-    let backend = MockKeychainBackend()
+    let backend = InMemoryKeychainBackend()
     let storage = KeychainStorage<String>("token", service: "tests", backend: backend)
     storage.wrappedValue = "stored"
     #expect(storage.wrappedValue == "stored")
 }
 
-private struct FailingBackend: SecureStorageBackend {
-    func add(_ query: KeychainQuery, data: Data) throws {
+private struct FailingBackend: KeychainBackend {
+    func save(
+        _ data: Data,
+        service: String,
+        account: String,
+        accessGroup: String?,
+        accessibility: KeychainAccessibility,
+        isSynchronizable: Bool,
+        label: String?,
+        comment: String?
+    ) throws {
         throw KeychainError.operationFailed(-1)
     }
 
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+    func load(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws -> Data {
         throw KeychainError.operationFailed(-1)
     }
 
-    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
+    func update(
+        _ data: Data,
+        service: String,
+        account: String,
+        accessGroup: String?,
+        accessibility: KeychainAccessibility,
+        isSynchronizable: Bool,
+        label: String?,
+        comment: String?
+    ) throws {
         throw KeychainError.operationFailed(-1)
     }
 
-    func delete(matching query: KeychainQuery) throws {
+    func delete(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws {
         throw KeychainError.operationFailed(-1)
     }
 }

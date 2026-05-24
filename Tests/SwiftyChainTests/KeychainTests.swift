@@ -1,10 +1,10 @@
 import Testing
-
-@testable import SwiftyChain
+import SwiftyChain
+import SwiftyChainTesting
 
 @Test
 func saveLoadUpdateAndDelete() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key = KeychainKey<String>(service: "tests", account: "token")
 
     try await keychain.save("one", for: key)
@@ -20,7 +20,7 @@ func saveLoadUpdateAndDelete() async throws {
 
 @Test
 func allAccountsAndBulkDelete() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     try await keychain.save("a", for: KeychainKey<String>(service: "tests", account: "a"))
     try await keychain.save("b", for: KeychainKey<String>(service: "tests", account: "b"))
 

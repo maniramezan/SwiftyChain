@@ -1,7 +1,7 @@
 import Foundation
 import Testing
-
-@testable import SwiftyChain
+import SwiftyChain
+import SwiftyChainTesting
 
 private struct Credentials: Codable, Sendable, Equatable {
     let username: String
@@ -10,7 +10,7 @@ private struct Credentials: Codable, Sendable, Equatable {
 
 @Test
 func codableKeychainStorableRoundTrips() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key = KeychainKey<CodableKeychainStorable<Credentials>>(
         service: "tests",
         account: "credentials"

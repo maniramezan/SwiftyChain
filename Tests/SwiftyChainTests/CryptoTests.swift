@@ -2,13 +2,12 @@
     import Foundation
     import Security
     import Testing
-
-    @testable import SwiftyChain
+    import SwiftyChain
+    import SwiftyChainTesting
 
     @Test
     func cryptoKeyRoundTripsThroughMockBackend() async throws {
-        let backend = MockKeychainBackend()
-        let keychain = Keychain(backend: backend)
+        let keychain = InMemoryKeychain()
         let secKey = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.roundtrip")
 
@@ -24,8 +23,7 @@
 
     @Test
     func cryptoSaveOverwritesExistingTag() async throws {
-        let backend = MockKeychainBackend()
-        let keychain = Keychain(backend: backend)
+        let keychain = InMemoryKeychain()
         let first = try makeECKey()
         let second = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.overwrite")

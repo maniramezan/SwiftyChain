@@ -33,7 +33,7 @@ import Foundation
 ///     print(event.kind, event.account ?? "(all)")
 /// }
 /// ```
-public actor Keychain {
+public actor Keychain: KeychainProtocol {
     /// The shared keychain instance backed by the system Apple Keychain.
     public static let shared = Keychain()
 

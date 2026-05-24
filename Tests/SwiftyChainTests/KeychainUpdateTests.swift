@@ -1,11 +1,11 @@
 import Foundation
 import Testing
-
-@testable import SwiftyChain
+import SwiftyChain
+import SwiftyChainTesting
 
 @Test
 func directUpdateReplacesValue() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key = KeychainKey<String>(service: "tests", account: "token")
 
     try await keychain.save("one", for: key)
@@ -16,7 +16,7 @@ func directUpdateReplacesValue() async throws {
 
 @Test
 func directUpdateOnMissingItemThrows() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key = KeychainKey<String>(service: "tests", account: "missing")
 
     await #expect(throws: KeychainError.itemNotFound) {
@@ -26,7 +26,7 @@ func directUpdateOnMissingItemThrows() async throws {
 
 @Test
 func updateMatchesByIdentityIgnoringAttributes() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let labeled = KeychainKey<String>(
         service: "tests",
         account: "token",
@@ -50,7 +50,7 @@ func updateMatchesByIdentityIgnoringAttributes() async throws {
 
 @Test
 func upsertCreatesAndThenReplaces() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key = KeychainKey<String>(service: "tests", account: "token")
 
     try await keychain.upsert("first", for: key)
@@ -62,7 +62,7 @@ func upsertCreatesAndThenReplaces() async throws {
 
 @Test
 func deleteAllSynchronizableLeavesLocalItems() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let localKey = KeychainKey<String>(service: "tests", account: "local")
     let syncKey = KeychainKey<String>(
         service: "tests",
@@ -81,7 +81,7 @@ func deleteAllSynchronizableLeavesLocalItems() async throws {
 
 @Test
 func deleteAllItemsWithCustomQueryRespectsFilters() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     try await keychain.save(
         "local",
         for: KeychainKey<String>(service: "tests", account: "a")

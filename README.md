@@ -24,9 +24,61 @@ let token = try await Keychain.shared.loadIfPresent(key: tokenKey)
 var authToken: String?
 ```
 
+`account` and `service` are the required initializer parameters. The full
+initializer is:
+
+```swift
+@KeychainStorage(
+    "auth_token",
+    service: "com.example.app",
+    accessGroup: nil,
+    accessibility: .whenUnlocked,
+    isSynchronizable: false,
+    defaultValue: nil
+)
+var authToken: String?
+```
+
+Use the optional arguments only when needed:
+
+- `accessGroup` to share credentials with another app target or extension
+- `accessibility` to control when the item can be read
+- `isSynchronizable` to opt into iCloud Keychain sync
+- `defaultValue` to return a fallback when nothing is stored yet
+
 ## Traits
 
 Core keychain support is dependency-free beyond `Security.framework`. Optional traits are declared for macro, cryptography, and observation features as the implementation matures.
+
+## Testing
+
+SwiftyChain ships a separate `SwiftyChainTesting` product for downstream tests.
+
+```swift
+import SwiftyChain
+import SwiftyChainTesting
+
+let keychain: any KeychainProtocol = InMemoryKeychain()
+let tokenKey = KeychainKey<String>(service: "com.example.app", account: "auth_token")
+
+try await keychain.upsert("secret", for: tokenKey)
+#expect(try await keychain.load(key: tokenKey) == "secret")
+```
+
+```swift
+import SwiftyChain
+import SwiftyChainTesting
+
+let backend = InMemoryKeychainBackend()
+let storage = KeychainStorage<String>(
+    "auth_token",
+    service: "com.example.app",
+    backend: backend
+)
+
+storage.wrappedValue = "secret"
+#expect(storage.wrappedValue == "secret")
+```
 
 ## Development
 

@@ -5,15 +5,16 @@
 `Keychain` is the primary entry point for all keychain operations. It is
 declared as an `actor` so every method is automatically thread-safe.
 
-Use the ``shared`` singleton for production code. In tests, create an
-instance with a custom backend to avoid hitting the real keychain.
+Use the ``shared`` singleton for production code. In tests, depend on
+``KeychainProtocol`` and use `SwiftyChainTesting.InMemoryKeychain` to avoid
+hitting the real keychain.
 
 ```swift
 // Production
 let token = try await Keychain.shared.load(key: myKey)
 
-// Tests — inject a mock backend
-let keychain = Keychain(backend: MockKeychainBackend())
+// Tests
+let keychain: any KeychainProtocol = InMemoryKeychain()
 ```
 
 ### Choosing the Right Write Method

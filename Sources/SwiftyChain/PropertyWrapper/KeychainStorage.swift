@@ -14,7 +14,7 @@ import Security
 @propertyWrapper
 public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     private let key: KeychainKey<Value>
-    private let backend: any SecureStorageBackend
+    private let backend: any KeychainBackend
     private let defaultValue: Value?
     private let errorBox: ErrorBox
 
@@ -58,10 +58,10 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
         )
     }
 
-    internal init(
+    public init(
         _ account: String,
         service: String,
-        backend: any SecureStorageBackend,
+        backend: any KeychainBackend,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility = .whenUnlocked,
         isSynchronizable: Bool = false,
@@ -89,10 +89,12 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     public var wrappedValue: Value? {
         get {
             do {
-                let result = try backend.copyMatching(identityQuery(returnData: true))
-                guard case .data(let data) = result else {
-                    throw KeychainError.unexpectedData
-                }
+                let data = try backend.load(
+                    service: key.service,
+                    account: key.account,
+                    accessGroup: key.accessGroup,
+                    isSynchronizable: key.isSynchronizable
+                )
                 errorBox.value = nil
                 return try Value.fromKeychainData(data)
             } catch KeychainError.itemNotFound {
@@ -110,20 +112,35 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
             do {
                 if let newValue {
                     do {
-                        try backend.add(addQuery(), data: newValue.keychainData())
+                        try backend.save(
+                            try newValue.keychainData(),
+                            service: key.service,
+                            account: key.account,
+                            accessGroup: key.accessGroup,
+                            accessibility: key.accessibility,
+                            isSynchronizable: key.isSynchronizable,
+                            label: key.label,
+                            comment: key.comment
+                        )
                     } catch KeychainError.duplicateItem {
                         try backend.update(
-                            matching: identityQuery(),
-                            to: KeychainAttributes(
-                                data: try newValue.keychainData(),
-                                label: key.label,
-                                comment: key.comment,
-                                accessibility: key.accessibility
-                            )
+                            try newValue.keychainData(),
+                            service: key.service,
+                            account: key.account,
+                            accessGroup: key.accessGroup,
+                            accessibility: key.accessibility,
+                            isSynchronizable: key.isSynchronizable,
+                            label: key.label,
+                            comment: key.comment
                         )
                     }
                 } else {
-                    try backend.delete(matching: identityQuery())
+                    try backend.delete(
+                        service: key.service,
+                        account: key.account,
+                        accessGroup: key.accessGroup,
+                        isSynchronizable: key.isSynchronizable
+                    )
                 }
                 errorBox.value = nil
             } catch let error as KeychainError {
@@ -132,30 +149,6 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                 errorBox.value = .unexpectedData
             }
         }
-    }
-
-    private func identityQuery(returnData: Bool = false) -> KeychainQuery {
-        KeychainQuery(
-            itemClass: .genericPassword,
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable,
-            returnData: returnData
-        )
-    }
-
-    private func addQuery() -> KeychainQuery {
-        KeychainQuery(
-            itemClass: .genericPassword,
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            accessibility: key.accessibility,
-            isSynchronizable: key.isSynchronizable,
-            label: key.label,
-            comment: key.comment
-        )
     }
 
     private final class ErrorBox: @unchecked Sendable {

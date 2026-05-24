@@ -1,12 +1,12 @@
 #if Observation
     import Foundation
     import Testing
-
-    @testable import SwiftyChain
+    import SwiftyChain
+    import SwiftyChainTesting
 
     @Test
     func observerReceivesSaveUpdateAndDeleteEvents() async throws {
-        let keychain = Keychain(backend: MockKeychainBackend())
+        let keychain = InMemoryKeychain()
         let key = KeychainKey<String>(service: "tests.observation", account: "token")
         let stream = await keychain.observeKeychainChanges(service: "tests.observation")
 
@@ -26,7 +26,7 @@
 
     @Test
     func observerIsScopedToService() async throws {
-        let keychain = Keychain(backend: MockKeychainBackend())
+        let keychain = InMemoryKeychain()
         let stream = await keychain.observeKeychainChanges(service: "tests.observation.scoped")
 
         try await keychain.save(
@@ -45,7 +45,7 @@
 
     @Test
     func bulkDeleteEmitsBulkDeletedEvent() async throws {
-        let keychain = Keychain(backend: MockKeychainBackend())
+        let keychain = InMemoryKeychain()
         let stream = await keychain.observeKeychainChanges(service: "tests.observation.bulk")
 
         try await keychain.deleteAll(service: "tests.observation.bulk")

@@ -1,11 +1,11 @@
 import Foundation
 import Testing
-
-@testable import SwiftyChain
+import SwiftyChain
+import SwiftyChainTesting
 
 @Test
 func internetPasswordRoundTrips() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key = InternetPasswordKey(
         server: "example.com",
         account: "alice",
@@ -24,7 +24,7 @@ func internetPasswordRoundTrips() async throws {
 
 @Test
 func internetPasswordsDistinguishedByProtocol() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let httpsKey = InternetPasswordKey(
         server: "example.com",
         account: "alice",
@@ -45,7 +45,7 @@ func internetPasswordsDistinguishedByProtocol() async throws {
 
 @Test
 func internetPasswordsDistinguishedByPortAndPath() async throws {
-    let keychain = Keychain(backend: MockKeychainBackend())
+    let keychain = InMemoryKeychain()
     let key8080 = InternetPasswordKey(
         server: "example.com",
         account: "alice",

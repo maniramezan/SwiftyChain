@@ -70,7 +70,7 @@ Enable traits by passing them to the product dependency:
 - ``KeychainStorage``
 - <doc:SwiftyChainKeychainStorage>
 
-### Testing
+### Test Support
 
 - ``KeychainProtocol``
 - ``KeychainBackend``

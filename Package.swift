@@ -13,7 +13,8 @@ let package = Package(
         .visionOS(.v1),
     ],
     products: [
-        .library(name: "SwiftyChain", targets: ["SwiftyChain"])
+        .library(name: "SwiftyChain", targets: ["SwiftyChain"]),
+        .library(name: "SwiftyChainTesting", targets: ["SwiftyChainTesting"]),
     ],
     traits: [
         .default(enabledTraits: []),
@@ -37,6 +38,14 @@ let package = Package(
                 .define("Observation", .when(traits: ["observation"])),
             ]
         ),
+        .target(
+            name: "SwiftyChainTesting",
+            dependencies: ["SwiftyChain"],
+            swiftSettings: [
+                .define("Cryptography", .when(traits: ["cryptography"])),
+                .define("Observation", .when(traits: ["observation"])),
+            ]
+        ),
         .macro(
             name: "SwiftyChainMacros",
             dependencies: [
@@ -49,9 +58,17 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftyChainTests",
-            dependencies: ["SwiftyChain"],
+            dependencies: ["SwiftyChain", "SwiftyChainTesting"],
             swiftSettings: [
                 .define("Macros", .when(traits: ["macros"])),
+                .define("Cryptography", .when(traits: ["cryptography"])),
+                .define("Observation", .when(traits: ["observation"])),
+            ]
+        ),
+        .testTarget(
+            name: "SwiftyChainTestingTests",
+            dependencies: ["SwiftyChain", "SwiftyChainTesting"],
+            swiftSettings: [
                 .define("Cryptography", .when(traits: ["cryptography"])),
                 .define("Observation", .when(traits: ["observation"])),
             ]

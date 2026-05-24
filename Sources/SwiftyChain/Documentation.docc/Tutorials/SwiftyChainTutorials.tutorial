@@ -10,6 +10,7 @@
     }
 
     @Chapter(name: "Property Wrapper") {
+        @Image(source: "chapter-getting-started.png", alt: "Keychain storage tutorial")
         @TutorialReference(tutorial: "doc:SwiftyChainKeychainStorage")
     }
 }

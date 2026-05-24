@@ -1,7 +1,6 @@
 import Foundation
 import Testing
-
-@testable import SwiftyChain
+import SwiftyChain
 
 private struct DummyError: Error, CustomStringConvertible {
     let description: String
@@ -10,7 +9,7 @@ private struct DummyError: Error, CustomStringConvertible {
 @Test
 func encodingFailedFromErrorEmbedsDescription() throws {
     let underlying = DummyError(description: "encoder blew up")
-    let error: KeychainError = .encodingFailed(underlying)
+    let error: KeychainError = .encodingFailed(String(describing: underlying))
 
     guard case .encodingFailed(let message) = error else {
         Issue.record("expected encodingFailed")
@@ -22,7 +21,7 @@ func encodingFailedFromErrorEmbedsDescription() throws {
 @Test
 func decodingFailedFromErrorEmbedsDescription() throws {
     let underlying = DummyError(description: "bad bytes")
-    let error: KeychainError = .decodingFailed(underlying)
+    let error: KeychainError = .decodingFailed(String(describing: underlying))
 
     guard case .decodingFailed(let message) = error else {
         Issue.record("expected decodingFailed")
