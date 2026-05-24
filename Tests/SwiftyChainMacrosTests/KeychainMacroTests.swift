@@ -339,3 +339,229 @@ func keychainScopeMacroDiagnosesEmptyService() {
         macros: testMacros
     )
 }
+
+@Test
+func keychainItemMacroDiagnosesEmptyAccount() {
+    assertMacroExpansion(
+        """
+        struct AuthStore {
+            @KeychainItem("", service: "app")
+            var authToken: String?
+        }
+        """,
+        expandedSource: """
+            struct AuthStore {
+                var authToken: String? {
+                    get async throws {
+                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                    }
+                }
+
+                fileprivate static let _authTokenKey = KeychainKey<String>(
+                    service: "app",
+                    account: "",
+                    accessGroup: nil,
+                    accessibility: .whenUnlocked,
+                    isSynchronizable: false,
+                    label: nil,
+                    comment: nil
+                )
+
+                func setAuthToken(_ newValue: String?) async throws {
+                    if let newValue {
+                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                    } else {
+                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                    }
+                }
+            }
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "account must be a non-empty string literal",
+                line: 2,
+                column: 5,
+            )
+        ],
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainItemMacroDiagnosesUntypedVariable() {
+    assertMacroExpansion(
+        """
+        struct AuthStore {
+            @KeychainItem("token", service: "app")
+            var authToken = "value"
+        }
+        """,
+        expandedSource: """
+            struct AuthStore {
+                var authToken = "value"
+            }
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "@KeychainItem requires a typed variable declaration",
+                line: 2,
+                column: 5,
+            ),
+            DiagnosticSpec(
+                message: "@KeychainItem can only be applied to a variable declaration",
+                line: 2,
+                column: 5,
+            ),
+        ],
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainItemMacroExpandsScopedClassProperty() {
+    assertMacroExpansion(
+        """
+        @KeychainScope(service: "app")
+        final class AuthStore {
+            @KeychainItem("token", label: "Auth token", comment: "Stored token", isSynchronizable: true)
+            var authToken: String?
+        }
+        """,
+        expandedSource: """
+            final class AuthStore {
+                var authToken: String? {
+                    get async throws {
+                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                    }
+                }
+
+                fileprivate static let _authTokenKey = KeychainKey<String>(
+                    service: Self._keychainScopeService,
+                    account: "token",
+                    accessGroup: Self._keychainScopeAccessGroup,
+                    accessibility: .whenUnlocked,
+                    isSynchronizable: true,
+                    label: "Auth token",
+                    comment: "Stored token"
+                )
+
+                func setAuthToken(_ newValue: String?) async throws {
+                    if let newValue {
+                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                    } else {
+                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                    }
+                }
+
+                static let shared = Self()
+
+                fileprivate static let _keychainScopeService = "app"
+
+                fileprivate static let _keychainScopeAccessGroup = nil
+
+                func deleteAll() async throws {
+                    try await Keychain.shared.deleteAll(
+                        service: Self._keychainScopeService,
+                        accessGroup: Self._keychainScopeAccessGroup
+                    )
+                }
+            }
+            """,
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainKeyMacroDiagnosesNonLiteralServiceAndAccount() {
+    assertMacroExpansion(
+        """
+        let service = "app"
+        let account = "token"
+        let key: KeychainKey<String> = #keychainKey(service: service, account: account)
+        """,
+        expandedSource: """
+            let service = "app"
+            let account = "token"
+            let key: KeychainKey<String> = KeychainKey(
+                service: service,
+                account: account,
+                accessGroup: nil,
+                accessibility: .whenUnlocked,
+                isSynchronizable: false,
+                label: nil,
+                comment: nil
+            )
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "service must be a string literal",
+                line: 3,
+                column: 32,
+            ),
+            DiagnosticSpec(
+                message: "account must be a string literal",
+                line: 3,
+                column: 32,
+            ),
+        ],
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainKeyMacroDiagnosesInvalidAccessGroupLiteral() {
+    assertMacroExpansion(
+        """
+        let group = "shared"
+        let key: KeychainKey<String> = #keychainKey(service: "app", account: "token", accessGroup: group)
+        """,
+        expandedSource: """
+            let group = "shared"
+            let key: KeychainKey<String> = KeychainKey(
+                service: "app",
+                account: "token",
+                accessGroup: group,
+                accessibility: .whenUnlocked,
+                isSynchronizable: false,
+                label: nil,
+                comment: nil
+            )
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "accessGroup must be a string literal when provided",
+                line: 2,
+                column: 32,
+            )
+        ],
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainKeyMacroDiagnosesEmptyAccessGroupLiteral() {
+    assertMacroExpansion(
+        """
+        let key: KeychainKey<String> = #keychainKey(service: "app", account: "token", accessGroup: "")
+        """,
+        expandedSource: """
+            let key: KeychainKey<String> = KeychainKey(
+                service: "app",
+                account: "token",
+                accessGroup: "",
+                accessibility: .whenUnlocked,
+                isSynchronizable: false,
+                label: nil,
+                comment: nil
+            )
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "accessGroup must be a non-empty string literal when provided",
+                line: 1,
+                column: 32,
+            )
+        ],
+        macros: testMacros
+    )
+}
