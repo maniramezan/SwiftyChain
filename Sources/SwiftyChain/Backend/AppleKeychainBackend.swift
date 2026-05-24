@@ -3,6 +3,7 @@ import Security
 
 internal struct AppleKeychainBackend: SecureStorageBackend {
     func add(_ query: KeychainQuery, data: Data) throws {
+        logSecurityCall("SecItemAdd", query: query)
         var attributes = secQuery(from: query)
         attributes[kSecValueData as String] = data
         if let accessibility = query.accessibility {
@@ -11,9 +12,11 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
 
         let status = SecItemAdd(attributes as CFDictionary, nil)
         try mapStatus(status)
+        SwiftyChainLoggers.backend.debug("SecItemAdd succeeded")
     }
 
     func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+        logSecurityCall("SecItemCopyMatching", query: query)
         var secAttributes = secQuery(from: query)
         secAttributes[kSecReturnData as String] = query.returnData
         secAttributes[kSecReturnAttributes as String] = query.returnAttributes
@@ -22,9 +25,11 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(secAttributes as CFDictionary, &result)
         try mapStatus(status)
+        SwiftyChainLoggers.backend.debug("SecItemCopyMatching succeeded")
 
         if query.matchLimit == .all {
             guard let array = result as? [[String: Any]] else {
+                SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected array result")
                 throw KeychainError.unexpectedData
             }
             return .items(array.map { .attributes(attributes(from: $0)) })
@@ -32,6 +37,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
 
         if query.returnData {
             guard let data = result as? Data else {
+                SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected data result")
                 throw KeychainError.unexpectedData
             }
             return .data(data)
@@ -39,6 +45,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
 
         if query.returnAttributes {
             guard let dictionary = result as? [String: Any] else {
+                SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected attributes result")
                 throw KeychainError.unexpectedData
             }
             return .attributes(attributes(from: dictionary))
@@ -48,6 +55,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
     }
 
     func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
+        logSecurityCall("SecItemUpdate", query: query)
         var updateAttributes: [String: Any] = [:]
         if let data = attributes.data {
             updateAttributes[kSecValueData as String] = data
@@ -64,18 +72,26 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
 
         let status = SecItemUpdate(secQuery(from: query) as CFDictionary, updateAttributes as CFDictionary)
         try mapStatus(status)
+        SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
     }
 
     func delete(matching query: KeychainQuery) throws {
+        logSecurityCall("SecItemDelete", query: query)
         // The macOS legacy keychain removes one matching item per
         // SecItemDelete call, even when more match. Loop until the keychain
         // reports no more matches so bulk deletes actually clear everything.
         let attributes = secQuery(from: query) as CFDictionary
         for _ in 0..<deleteSafetyCap {
             let status = SecItemDelete(attributes)
-            if status == errSecItemNotFound { return }
+            if status == errSecItemNotFound {
+                SwiftyChainLoggers.backend.debug("SecItemDelete completed")
+                return
+            }
             try mapStatus(status)
         }
+        SwiftyChainLoggers.backend.fault(
+            "SecItemDelete exceeded safety cap for itemClass=\(String(describing: query.itemClass), privacy: .public) service=\(query.service ?? "<none>", privacy: .private(mask: .hash)) account=\(query.account ?? "<none>", privacy: .private(mask: .hash)) server=\(query.server ?? "<none>", privacy: .private(mask: .hash))"
+        )
         throw KeychainError.operationFailed(errSecInternalError)
     }
 
@@ -138,21 +154,33 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         return values
     }
 
+    private func logSecurityCall(_ operation: StaticString, query: KeychainQuery) {
+        SwiftyChainLoggers.backend.debug(
+            "\(operation) started for itemClass=\(String(describing: query.itemClass), privacy: .public) service=\(query.service ?? "<none>", privacy: .private(mask: .hash)) account=\(query.account ?? "<none>", privacy: .private(mask: .hash)) server=\(query.server ?? "<none>", privacy: .private(mask: .hash))"
+        )
+    }
+
     private func mapStatus(_ status: OSStatus) throws {
         switch status {
         case errSecSuccess:
             return
         case errSecItemNotFound:
+            SwiftyChainLoggers.backend.debug("Security operation returned item not found")
             throw KeychainError.itemNotFound
         case errSecDuplicateItem:
+            SwiftyChainLoggers.backend.debug("Security operation returned duplicate item")
             throw KeychainError.duplicateItem
         case errSecAuthFailed, errSecUserCanceled:
+            SwiftyChainLoggers.backend.debug("Security operation returned authentication failure")
             throw KeychainError.authenticationFailed
         case errSecInteractionNotAllowed:
+            SwiftyChainLoggers.backend.debug("Security operation requires user presence")
             throw KeychainError.userPresenceRequired
         case errSecMissingEntitlement:
+            SwiftyChainLoggers.backend.error("Security operation missing entitlement")
             throw KeychainError.accessGroupDenied
         default:
+            SwiftyChainLoggers.backend.error("Security operation failed with status=\(status, privacy: .public)")
             throw KeychainError.operationFailed(status)
         }
     }

@@ -32,4 +32,29 @@ extension KeychainError {
     static func decodingFailed(_ error: any Error) -> KeychainError {
         .decodingFailed(String(describing: error))
     }
+
+    internal var logName: String {
+        switch self {
+        case .itemNotFound:
+            "itemNotFound"
+        case .duplicateItem:
+            "duplicateItem"
+        case .authenticationFailed:
+            "authenticationFailed"
+        case .userPresenceRequired:
+            "userPresenceRequired"
+        case .unexpectedData:
+            "unexpectedData"
+        case .encodingFailed:
+            "encodingFailed"
+        case .decodingFailed:
+            "decodingFailed"
+        case .operationFailed:
+            "operationFailed"
+        case .accessGroupDenied:
+            "accessGroupDenied"
+        case .platformUnsupported:
+            "platformUnsupported"
+        }
+    }
 }

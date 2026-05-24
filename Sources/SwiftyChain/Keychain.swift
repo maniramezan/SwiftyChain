@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Actor-isolated public API for keychain operations.
 ///
@@ -28,11 +29,15 @@ import Foundation
 ///
 /// When built with the `Observation` trait, you can receive async events for each mutation:
 ///
-/// ```swift
-/// for await event in await Keychain.shared.observeKeychainChanges(service: "com.example.app") {
-///     print(event.kind, event.account ?? "(all)")
-/// }
-/// ```
+    /// ```swift
+    /// import OSLog
+    ///
+    /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+    ///
+    /// for await event in await Keychain.shared.observeKeychainChanges(service: "com.example.app") {
+    ///     logger.debug("Observed change: \(String(describing: event.kind), privacy: .public)")
+    /// }
+    /// ```
 public actor Keychain: KeychainProtocol {
     /// The shared keychain instance backed by the system Apple Keychain.
     public static let shared = Keychain()
@@ -74,8 +79,15 @@ public actor Keychain: KeychainProtocol {
     /// try await Keychain.shared.save("abc123", for: key)
     /// ```
     public func save<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        try backend.add(addQuery(for: key), data: value.keychainData())
-        notify(service: key.service, account: key.account, kind: .saved)
+        logKeychainOperationStarted("save", service: key.service, account: key.account)
+        do {
+            try backend.add(addQuery(for: key), data: value.keychainData())
+            notify(service: key.service, account: key.account, kind: .saved)
+            logKeychainOperationSucceeded("save", service: key.service, account: key.account)
+        } catch {
+            logKeychainOperationFailed("save", service: key.service, account: key.account, error: error)
+            throw error
+        }
     }
 
     /// Loads a value from the keychain for the given key.
@@ -89,11 +101,25 @@ public actor Keychain: KeychainProtocol {
     /// let token = try await Keychain.shared.load(key: key)
     /// ```
     public func load<T: KeychainStorable>(key: KeychainKey<T>) throws -> T {
-        let result = try backend.copyMatching(identityQuery(for: key, returnData: true))
-        guard case .data(let data) = result else {
-            throw KeychainError.unexpectedData
+        logKeychainOperationStarted("load", service: key.service, account: key.account)
+        do {
+            let result = try backend.copyMatching(identityQuery(for: key, returnData: true))
+            guard case .data(let data) = result else {
+                SwiftyChainLoggers.keychain.error(
+                    "load returned unexpected result for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                )
+                throw KeychainError.unexpectedData
+            }
+            return try T.fromKeychainData(data)
+        } catch KeychainError.itemNotFound {
+            SwiftyChainLoggers.keychain.debug(
+                "load returned item not found for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+            )
+            throw KeychainError.itemNotFound
+        } catch {
+            logKeychainOperationFailed("load", service: key.service, account: key.account, error: error)
+            throw error
         }
-        return try T.fromKeychainData(data)
     }
 
     /// Loads a value from the keychain, returning `nil` when the item does not exist.
@@ -114,6 +140,9 @@ public actor Keychain: KeychainProtocol {
         do {
             return try load(key: key)
         } catch KeychainError.itemNotFound {
+            SwiftyChainLoggers.keychain.debug(
+                "loadIfPresent returned nil for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+            )
             return nil
         }
     }
@@ -133,16 +162,23 @@ public actor Keychain: KeychainProtocol {
     /// try await Keychain.shared.update("new-token", for: key)
     /// ```
     public func update<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        try backend.update(
-            matching: identityQuery(for: key),
-            to: KeychainAttributes(
-                data: try value.keychainData(),
-                label: key.label,
-                comment: key.comment,
-                accessibility: key.accessibility
+        logKeychainOperationStarted("update", service: key.service, account: key.account)
+        do {
+            try backend.update(
+                matching: identityQuery(for: key),
+                to: KeychainAttributes(
+                    data: try value.keychainData(),
+                    label: key.label,
+                    comment: key.comment,
+                    accessibility: key.accessibility
+                )
             )
-        )
-        notify(service: key.service, account: key.account, kind: .updated)
+            notify(service: key.service, account: key.account, kind: .updated)
+            logKeychainOperationSucceeded("update", service: key.service, account: key.account)
+        } catch {
+            logKeychainOperationFailed("update", service: key.service, account: key.account, error: error)
+            throw error
+        }
     }
 
     /// Saves a value to the keychain, updating the existing item if one already exists.
@@ -158,10 +194,18 @@ public actor Keychain: KeychainProtocol {
     /// try await Keychain.shared.upsert("refreshed-token", for: key)
     /// ```
     public func upsert<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
+        logKeychainOperationStarted("upsert", service: key.service, account: key.account)
         do {
             try save(value, for: key)
         } catch KeychainError.duplicateItem {
+            SwiftyChainLoggers.keychain.debug(
+                "upsert found duplicate item; updating instead for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+            )
             try update(value, for: key)
+            logKeychainOperationSucceeded("upsert", service: key.service, account: key.account)
+        } catch {
+            logKeychainOperationFailed("upsert", service: key.service, account: key.account, error: error)
+            throw error
         }
     }
 
@@ -175,8 +219,15 @@ public actor Keychain: KeychainProtocol {
     /// try await Keychain.shared.delete(key: key)
     /// ```
     public func delete<T: KeychainStorable>(key: KeychainKey<T>) throws {
-        try backend.delete(matching: identityQuery(for: key))
-        notify(service: key.service, account: key.account, kind: .deleted)
+        logKeychainOperationStarted("delete", service: key.service, account: key.account)
+        do {
+            try backend.delete(matching: identityQuery(for: key))
+            notify(service: key.service, account: key.account, kind: .deleted)
+            logKeychainOperationSucceeded("delete", service: key.service, account: key.account)
+        } catch {
+            logKeychainOperationFailed("delete", service: key.service, account: key.account, error: error)
+            throw error
+        }
     }
 
     /// Deletes all generic-password items for a service, including iCloud-synchronized ones.
@@ -230,16 +281,23 @@ public actor Keychain: KeychainProtocol {
             } else {
                 false
             }
-        try backend.delete(
-            matching: KeychainQuery(
-                itemClass: query.itemClass,
-                service: query.service,
-                accessGroup: query.accessGroup,
-                isSynchronizable: isSynchronizable
+        logBulkDeleteStarted(query: query)
+        do {
+            try backend.delete(
+                matching: KeychainQuery(
+                    itemClass: query.itemClass,
+                    service: query.service,
+                    accessGroup: query.accessGroup,
+                    isSynchronizable: isSynchronizable
+                )
             )
-        )
-        if let service = query.service {
-            notify(service: service, account: nil, kind: .bulkDeleted)
+            if let service = query.service {
+                notify(service: service, account: nil, kind: .bulkDeleted)
+            }
+            logBulkDeleteSucceeded(query: query)
+        } catch {
+            logBulkDeleteFailed(query: query, error: error)
+            throw error
         }
     }
 
@@ -259,7 +317,13 @@ public actor Keychain: KeychainProtocol {
             _ = try backend.copyMatching(identityQuery(for: key))
             return true
         } catch KeychainError.itemNotFound {
+            SwiftyChainLoggers.keychain.debug(
+                "exists returned false for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+            )
             return false
+        } catch {
+            logKeychainOperationFailed("exists", service: key.service, account: key.account, error: error)
+            throw error
         }
     }
 
@@ -275,7 +339,12 @@ public actor Keychain: KeychainProtocol {
     ///
     /// ```swift
     /// let accounts = try await Keychain.shared.allAccounts(service: "com.example.app")
-    /// for account in accounts { print("Found account:", account) }
+    /// import OSLog
+    ///
+    /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+    /// for account in accounts {
+    ///     logger.debug("Found account: \(account, privacy: .private(mask: .hash))")
+    /// }
     /// ```
     public func allAccounts(service: String, accessGroup: String? = nil) throws -> [String] {
         let result: KeychainQueryResult
@@ -290,9 +359,15 @@ public actor Keychain: KeychainProtocol {
                 )
             )
         } catch KeychainError.itemNotFound {
+            SwiftyChainLoggers.keychain.debug(
+                "allAccounts returned no items for service=\(service, privacy: .private(mask: .hash))"
+            )
             return []
         }
         guard case .items(let items) = result else {
+            SwiftyChainLoggers.keychain.error(
+                "allAccounts returned unexpected result for service=\(service, privacy: .private(mask: .hash))"
+            )
             throw KeychainError.unexpectedData
         }
         return items.compactMap { item in
@@ -317,8 +392,15 @@ public actor Keychain: KeychainProtocol {
     /// try await Keychain.shared.saveInternetPassword("s3cr3t", for: key)
     /// ```
     public func saveInternetPassword(_ password: String, for key: InternetPasswordKey) throws {
-        try backend.add(internetAddQuery(for: key), data: password.keychainData())
-        notify(service: key.server, account: key.account, kind: .saved)
+        logKeychainOperationStarted("saveInternetPassword", service: key.server, account: key.account)
+        do {
+            try backend.add(internetAddQuery(for: key), data: password.keychainData())
+            notify(service: key.server, account: key.account, kind: .saved)
+            logKeychainOperationSucceeded("saveInternetPassword", service: key.server, account: key.account)
+        } catch {
+            logKeychainOperationFailed("saveInternetPassword", service: key.server, account: key.account, error: error)
+            throw error
+        }
     }
 
     /// Loads an internet password from the keychain.
@@ -332,11 +414,25 @@ public actor Keychain: KeychainProtocol {
     /// let password = try await Keychain.shared.loadInternetPassword(for: key)
     /// ```
     public func loadInternetPassword(for key: InternetPasswordKey) throws -> String {
-        let result = try backend.copyMatching(internetIdentityQuery(for: key, returnData: true))
-        guard case .data(let data) = result else {
-            throw KeychainError.unexpectedData
+        logKeychainOperationStarted("loadInternetPassword", service: key.server, account: key.account)
+        do {
+            let result = try backend.copyMatching(internetIdentityQuery(for: key, returnData: true))
+            guard case .data(let data) = result else {
+                SwiftyChainLoggers.keychain.error(
+                    "loadInternetPassword returned unexpected result for server=\(key.server, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                )
+                throw KeychainError.unexpectedData
+            }
+            return try String.fromKeychainData(data)
+        } catch KeychainError.itemNotFound {
+            SwiftyChainLoggers.keychain.debug(
+                "loadInternetPassword returned item not found for server=\(key.server, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+            )
+            throw KeychainError.itemNotFound
+        } catch {
+            logKeychainOperationFailed("loadInternetPassword", service: key.server, account: key.account, error: error)
+            throw error
         }
-        return try String.fromKeychainData(data)
     }
 
     /// Deletes an internet password from the keychain.
@@ -349,8 +445,15 @@ public actor Keychain: KeychainProtocol {
     /// try await Keychain.shared.deleteInternetPassword(for: key)
     /// ```
     public func deleteInternetPassword(for key: InternetPasswordKey) throws {
-        try backend.delete(matching: internetIdentityQuery(for: key))
-        notify(service: key.server, account: key.account, kind: .deleted)
+        logKeychainOperationStarted("deleteInternetPassword", service: key.server, account: key.account)
+        do {
+            try backend.delete(matching: internetIdentityQuery(for: key))
+            notify(service: key.server, account: key.account, kind: .deleted)
+            logKeychainOperationSucceeded("deleteInternetPassword", service: key.server, account: key.account)
+        } catch {
+            logKeychainOperationFailed("deleteInternetPassword", service: key.server, account: key.account, error: error)
+            throw error
+        }
     }
 
     #if Observation
@@ -369,12 +472,16 @@ public actor Keychain: KeychainProtocol {
         /// - Returns: An `AsyncStream` of ``KeychainChangeEvent`` values.
         ///
         /// ```swift
+        /// import OSLog
+        ///
+        /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+        ///
         /// for await event in await Keychain.shared.observeKeychainChanges(service: "com.example.app") {
         ///     switch event.kind {
-        ///     case .saved:       print("Saved:", event.account ?? "")
-        ///     case .updated:     print("Updated:", event.account ?? "")
-        ///     case .deleted:     print("Deleted:", event.account ?? "")
-        ///     case .bulkDeleted: print("All items deleted")
+        ///     case .saved:       logger.debug("Saved keychain item")
+        ///     case .updated:     logger.debug("Updated keychain item")
+        ///     case .deleted:     logger.debug("Deleted keychain item")
+        ///     case .bulkDeleted: logger.debug("Deleted all keychain items")
         ///     }
         /// }
         /// ```
@@ -384,6 +491,9 @@ public actor Keychain: KeychainProtocol {
         ) -> AsyncStream<KeychainChangeEvent> {
             let id = UUID()
             return AsyncStream { continuation in
+                SwiftyChainLoggers.observation.debug(
+                    "Registered observer for service=\(service, privacy: .private(mask: .hash))"
+                )
                 observers[id] = Observer(service: service, accessGroup: accessGroup, continuation: continuation)
                 continuation.onTermination = { [weak self] _ in
                     Task { await self?.removeObserver(id: id) }
@@ -398,6 +508,7 @@ public actor Keychain: KeychainProtocol {
         }
 
         private func removeObserver(id: UUID) {
+            SwiftyChainLoggers.observation.debug("Removed observer")
             observers.removeValue(forKey: id)
         }
 
@@ -410,6 +521,9 @@ public actor Keychain: KeychainProtocol {
                 case .bulkDeleted: .bulkDeleted
                 }
             let event = KeychainChangeEvent(service: service, account: account, kind: eventKind)
+            SwiftyChainLoggers.observation.debug(
+                "Emitting observation event=\(String(describing: eventKind), privacy: .public) service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<all>", privacy: .private(mask: .hash))"
+            )
             for observer in observers.values where observer.service == service {
                 observer.continuation.yield(event)
             }
@@ -482,5 +596,50 @@ public actor Keychain: KeychainProtocol {
             internetProtocol: key.protocol,
             authenticationType: key.authenticationType
         )
+    }
+
+    private func logKeychainOperationStarted(_ operation: StaticString, service: String, account: String?) {
+        SwiftyChainLoggers.keychain.debug(
+            "\(operation) started for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash))"
+        )
+    }
+
+    private func logKeychainOperationSucceeded(_ operation: StaticString, service: String, account: String?) {
+        SwiftyChainLoggers.keychain.debug(
+            "\(operation) succeeded for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash))"
+        )
+    }
+
+    private func logKeychainOperationFailed(_ operation: StaticString, service: String, account: String?, error: any Error) {
+        let errorName = keychainLogErrorName(for: error)
+        SwiftyChainLoggers.keychain.error(
+            "\(operation) failed for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
+        )
+    }
+
+    private func logBulkDeleteStarted(query: KeychainDeleteQuery) {
+        SwiftyChainLoggers.keychain.debug(
+            "deleteAllItems started for service=\(query.service ?? "<all>", privacy: .private(mask: .hash)) accessGroup=\(query.accessGroup ?? "<none>", privacy: .private(mask: .hash)) includeSynchronizable=\(query.includeSynchronizable, privacy: .public) onlySynchronizable=\(query.onlySynchronizable, privacy: .public)"
+        )
+    }
+
+    private func logBulkDeleteSucceeded(query: KeychainDeleteQuery) {
+        SwiftyChainLoggers.keychain.debug(
+            "deleteAllItems succeeded for service=\(query.service ?? "<all>", privacy: .private(mask: .hash)) accessGroup=\(query.accessGroup ?? "<none>", privacy: .private(mask: .hash))"
+        )
+    }
+
+    private func logBulkDeleteFailed(query: KeychainDeleteQuery, error: any Error) {
+        let errorName = keychainLogErrorName(for: error)
+        SwiftyChainLoggers.keychain.error(
+            "deleteAllItems failed for service=\(query.service ?? "<all>", privacy: .private(mask: .hash)) accessGroup=\(query.accessGroup ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
+        )
+    }
+
+    private func keychainLogErrorName(for error: any Error) -> String {
+        if let keychainError = error as? KeychainError {
+            return keychainError.logName
+        }
+        return String(reflecting: type(of: error))
     }
 }

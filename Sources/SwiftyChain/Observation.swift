@@ -4,8 +4,12 @@
     /// Received via ``Keychain/observeKeychainChanges(service:accessGroup:)``.
     ///
     /// ```swift
+    /// import OSLog
+    ///
+    /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+    ///
     /// for await event in await Keychain.shared.observeKeychainChanges(service: "com.example.app") {
-    ///     print(event.kind, event.account ?? "(all)")
+    ///     logger.debug("Observed change: \(String(describing: event.kind), privacy: .public)")
     /// }
     /// ```
     public struct KeychainChangeEvent: Sendable, Hashable {

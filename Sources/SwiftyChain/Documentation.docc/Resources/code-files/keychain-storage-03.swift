@@ -1,3 +1,4 @@
+import OSLog
 import SwiftyChain
 
 struct SessionStore {
@@ -6,7 +7,35 @@ struct SessionStore {
 }
 
 let session = SessionStore()
+let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
 
 if let error = session.$authToken {
-    print("Keychain error: \(error)")
+    logger.error("Keychain operation failed: \(error.logName, privacy: .public)")
+}
+
+private extension KeychainError {
+    var logName: String {
+        switch self {
+        case .itemNotFound:
+            "itemNotFound"
+        case .duplicateItem:
+            "duplicateItem"
+        case .authenticationFailed:
+            "authenticationFailed"
+        case .userPresenceRequired:
+            "userPresenceRequired"
+        case .unexpectedData:
+            "unexpectedData"
+        case .encodingFailed:
+            "encodingFailed"
+        case .decodingFailed:
+            "decodingFailed"
+        case .operationFailed:
+            "operationFailed"
+        case .accessGroupDenied:
+            "accessGroupDenied"
+        case .platformUnsupported:
+            "platformUnsupported"
+        }
+    }
 }

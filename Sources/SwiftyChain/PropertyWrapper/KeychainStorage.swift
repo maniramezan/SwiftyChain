@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Security
 
 /// Synchronous, `@AppStorage`-shaped access to a single optional keychain value.
@@ -21,8 +22,12 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     ///
     /// Access this via the projected value syntax:
     /// ```swift
+    /// import OSLog
+    ///
+    /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+    ///
     /// if let error = $token {
-    ///     print("Keychain error:", error)
+    ///     logger.error("Keychain operation failed: \(error.logName, privacy: .public)")
     /// }
     /// ```
     public var projectedValue: KeychainError? {
@@ -92,12 +97,21 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                 errorBox.value = nil
                 return try Value.fromKeychainData(data)
             } catch KeychainError.itemNotFound {
+                SwiftyChainLoggers.storage.debug(
+                    "KeychainStorage load returned item not found for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                )
                 errorBox.value = nil
                 return nil
             } catch let error as KeychainError {
+                SwiftyChainLoggers.storage.error(
+                    "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                )
                 errorBox.value = error
                 return nil
             } catch {
+                SwiftyChainLoggers.storage.error(
+                    "KeychainStorage load failed with unexpected error for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                )
                 errorBox.value = .unexpectedData
                 return nil
             }
@@ -106,6 +120,9 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
             do {
                 if let newValue {
                     do {
+                        SwiftyChainLoggers.storage.debug(
+                            "KeychainStorage save started for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                        )
                         try backend.save(
                             try newValue.keychainData(),
                             service: key.service,
@@ -117,6 +134,9 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                             comment: key.comment
                         )
                     } catch KeychainError.duplicateItem {
+                        SwiftyChainLoggers.storage.debug(
+                            "KeychainStorage save found duplicate item; updating instead for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                        )
                         try backend.update(
                             try newValue.keychainData(),
                             service: key.service,
@@ -129,6 +149,9 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                         )
                     }
                 } else {
+                    SwiftyChainLoggers.storage.debug(
+                        "KeychainStorage delete started for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                    )
                     try backend.delete(
                         service: key.service,
                         account: key.account,
@@ -138,8 +161,14 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                 }
                 errorBox.value = nil
             } catch let error as KeychainError {
+                SwiftyChainLoggers.storage.error(
+                    "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                )
                 errorBox.value = error
             } catch {
+                SwiftyChainLoggers.storage.error(
+                    "KeychainStorage write failed with unexpected error for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                )
                 errorBox.value = .unexpectedData
             }
         }
