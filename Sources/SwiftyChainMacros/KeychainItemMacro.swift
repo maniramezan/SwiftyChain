@@ -71,8 +71,10 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
         let type = typeAnnotation.type.trimmedDescription
         let valueType = wrappedValueType(from: type)
         let setterName = "set\(name.prefix(1).uppercased())\(name.dropFirst())"
-        let accessGroup = arguments?.expressionText(named: "accessGroup", default: scope == nil ? "nil" : "Self._keychainScopeAccessGroup")
-            ?? (scope == nil ? "nil" : "Self._keychainScopeAccessGroup")
+        let defaultAccessGroup = scope == nil ? "nil" : "Self._keychainScopeAccessGroup"
+        let accessGroup =
+            arguments?.expressionText(named: "accessGroup", default: defaultAccessGroup)
+            ?? defaultAccessGroup
         let accessibility =
             arguments?.expressionText(named: "accessibility", default: ".whenUnlocked") ?? ".whenUnlocked"
         let isSynchronizable = arguments?.expressionText(named: "isSynchronizable", default: "false") ?? "false"

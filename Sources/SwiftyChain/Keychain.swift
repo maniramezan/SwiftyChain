@@ -29,15 +29,15 @@ import OSLog
 ///
 /// When built with the `Observation` trait, you can receive async events for each mutation:
 ///
-    /// ```swift
-    /// import OSLog
-    ///
-    /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
-    ///
-    /// for await event in await Keychain.shared.observeKeychainChanges(service: "com.example.app") {
-    ///     logger.debug("Observed change: \(String(describing: event.kind), privacy: .public)")
-    /// }
-    /// ```
+/// ```swift
+/// import OSLog
+///
+/// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+///
+/// for await event in await Keychain.shared.observeKeychainChanges(service: "com.example.app") {
+///     logger.debug("Observed change: \(String(describing: event.kind), privacy: .public)")
+/// }
+/// ```
 public actor Keychain: KeychainProtocol {
     /// The shared keychain instance backed by the system Apple Keychain.
     public static let shared = Keychain()
@@ -451,7 +451,12 @@ public actor Keychain: KeychainProtocol {
             notify(service: key.server, account: key.account, kind: .deleted)
             logKeychainOperationSucceeded("deleteInternetPassword", service: key.server, account: key.account)
         } catch {
-            logKeychainOperationFailed("deleteInternetPassword", service: key.server, account: key.account, error: error)
+            logKeychainOperationFailed(
+                "deleteInternetPassword",
+                service: key.server,
+                account: key.account,
+                error: error
+            )
             throw error
         }
     }
@@ -610,7 +615,12 @@ public actor Keychain: KeychainProtocol {
         )
     }
 
-    private func logKeychainOperationFailed(_ operation: StaticString, service: String, account: String?, error: any Error) {
+    private func logKeychainOperationFailed(
+        _ operation: StaticString,
+        service: String,
+        account: String?,
+        error: any Error
+    ) {
         let errorName = keychainLogErrorName(for: error)
         SwiftyChainLoggers.keychain.error(
             "\(operation) failed for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"

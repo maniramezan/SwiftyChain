@@ -13,8 +13,8 @@ if let error = session.$authToken {
     logger.error("Keychain operation failed: \(error.logName, privacy: .public)")
 }
 
-private extension KeychainError {
-    var logName: String {
+extension KeychainError {
+    fileprivate var logName: String {
         switch self {
         case .itemNotFound:
             "itemNotFound"

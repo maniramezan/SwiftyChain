@@ -1,6 +1,7 @@
 import Foundation
-import SwiftyChain
 import Testing
+
+@testable import SwiftyChain
 
 private struct DummyError: Error, CustomStringConvertible {
     let description: String
@@ -35,4 +36,33 @@ func keychainErrorsAreEquatable() {
     #expect(KeychainError.itemNotFound == KeychainError.itemNotFound)
     #expect(KeychainError.operationFailed(-1) != KeychainError.operationFailed(-2))
     #expect(KeychainError.encodingFailed("a") != KeychainError.encodingFailed("b"))
+}
+
+@Test
+func derivedEncodingAndDecodingErrorsCaptureDescriptions() {
+    let encodingError = KeychainError.encodingFailed(DummyError(description: "encode-failure") as any Error)
+    let decodingError = KeychainError.decodingFailed(DummyError(description: "decode-failure") as any Error)
+
+    #expect(encodingError == .encodingFailed("encode-failure"))
+    #expect(decodingError == .decodingFailed("decode-failure"))
+}
+
+@Test
+func keychainErrorLogNamesCoverAllCases() {
+    let cases: [(KeychainError, String)] = [
+        (.itemNotFound, "itemNotFound"),
+        (.duplicateItem, "duplicateItem"),
+        (.authenticationFailed, "authenticationFailed"),
+        (.userPresenceRequired, "userPresenceRequired"),
+        (.unexpectedData, "unexpectedData"),
+        (.encodingFailed("x"), "encodingFailed"),
+        (.decodingFailed("x"), "decodingFailed"),
+        (.operationFailed(-1), "operationFailed"),
+        (.accessGroupDenied, "accessGroupDenied"),
+        (.platformUnsupported("nope"), "platformUnsupported"),
+    ]
+
+    for (error, expectedLogName) in cases {
+        #expect(error.logName == expectedLogName)
+    }
 }

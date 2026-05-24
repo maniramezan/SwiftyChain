@@ -2,8 +2,21 @@
     import Foundation
     import Security
     import Testing
-    import SwiftyChain
     import SwiftyChainTesting
+
+    @testable import SwiftyChain
+
+    private struct NonCryptoSecureStorageBackend: SecureStorageBackend {
+        func add(_ query: KeychainQuery, data: Data) throws {}
+
+        func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+            .attributes([])
+        }
+
+        func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
+
+        func delete(matching query: KeychainQuery) throws {}
+    }
 
     @Test
     func cryptoKeyRoundTripsThroughMockBackend() async throws {
@@ -33,6 +46,23 @@
 
         let loaded = try await keychain.loadCryptoKey(keyRef: ref)
         #expect(CFEqual(loaded.rawValue, second))
+    }
+
+    @Test
+    func cryptoOperationsFailWithoutCryptoBackend() async throws {
+        let keychain = Keychain(backend: NonCryptoSecureStorageBackend())
+        let secKey = try makeECKey()
+        let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.unsupported")
+
+        await #expect(throws: KeychainError.platformUnsupported("CryptoStorageBackend not available")) {
+            try await keychain.saveCryptoKey(StoredSecKey(secKey), for: ref)
+        }
+        await #expect(throws: KeychainError.platformUnsupported("CryptoStorageBackend not available")) {
+            _ = try await keychain.loadCryptoKey(keyRef: ref)
+        }
+        await #expect(throws: KeychainError.platformUnsupported("CryptoStorageBackend not available")) {
+            try await keychain.deleteCryptoKey(keyRef: ref)
+        }
     }
 
     private func makeECKey() throws -> SecKey {
