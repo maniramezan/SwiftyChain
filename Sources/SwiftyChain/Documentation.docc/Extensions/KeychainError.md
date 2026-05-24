@@ -6,13 +6,31 @@
 interacting with the keychain. Pattern-match on specific cases to
 provide targeted recovery.
 
+For most writes, use ``Keychain/upsert(_:for:)`` which handles
+create-or-replace in one call and avoids the need to pattern-match on
+``duplicateItem``:
+
+```swift
+// Preferred: upsert handles create-or-replace atomically
+try await Keychain.shared.upsert(token, for: key)
+```
+
+When you do need to distinguish specific failures, pattern-match on the
+error:
+
 ```swift
 do {
-    try await Keychain.shared.save(token, for: key)
-} catch KeychainError.duplicateItem {
-    try await Keychain.shared.update(token, for: key)
+    let token = try await Keychain.shared.load(key: key)
+    use(token)
+} catch KeychainError.itemNotFound {
+    // First launch — nothing stored yet; redirect to login
 } catch KeychainError.authenticationFailed {
-    // Prompt for biometrics
+    // User declined the biometric prompt — ask again or fall back
+} catch KeychainError.accessGroupDenied {
+    // Missing entitlements for the access group in the key
+} catch {
+    // Unexpected failure
+    print("Keychain error:", error)
 }
 ```
 

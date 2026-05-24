@@ -38,7 +38,9 @@ fast.
 ### Option 2: Direct Conformance
 
 Implement ``KeychainStorable/keychainData()`` and
-``KeychainStorable/fromKeychainData(_:)`` yourself:
+``KeychainStorable/fromKeychainData(_:)`` yourself. Wrap any serialization
+errors in ``KeychainError/encodingFailed(_:)`` or
+``KeychainError/decodingFailed(_:)`` so callers get consistent error types:
 
 ```swift
 struct APIToken: KeychainStorable {
@@ -48,14 +50,22 @@ struct APIToken: KeychainStorable {
     func keychainData() throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(Wrapper(raw: raw, expiresAt: expiresAt))
+        do {
+            return try encoder.encode(Wrapper(raw: raw, expiresAt: expiresAt))
+        } catch {
+            throw KeychainError.encodingFailed(error)
+        }
     }
 
     static func fromKeychainData(_ data: Data) throws -> APIToken {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let wrapper = try decoder.decode(Wrapper.self, from: data)
-        return APIToken(raw: wrapper.raw, expiresAt: wrapper.expiresAt)
+        do {
+            let wrapper = try decoder.decode(Wrapper.self, from: data)
+            return APIToken(raw: wrapper.raw, expiresAt: wrapper.expiresAt)
+        } catch {
+            throw KeychainError.decodingFailed(error)
+        }
     }
 
     private struct Wrapper: Codable {
@@ -65,6 +75,8 @@ struct APIToken: KeychainStorable {
 }
 ```
 
-> Tip: Throw ``KeychainError/encodingFailed(_:)`` or
-> ``KeychainError/decodingFailed(_:)`` from your implementation so errors
-> are consistent with the rest of SwiftyChain.
+> Important: Always wrap your encoder/decoder errors in
+> ``KeychainError/encodingFailed(_:)`` or ``KeychainError/decodingFailed(_:)``
+> rather than letting them propagate as raw `EncodingError` or `DecodingError`.
+> This ensures callers can pattern-match on ``KeychainError`` uniformly,
+> regardless of which serialization strategy you choose.

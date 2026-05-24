@@ -6,6 +6,6 @@
 
     @Chapter(name: "Getting Started") {
         @Image(source: "chapter-getting-started.png", alt: "Getting started with SwiftyChain")
-        @TutorialReference(tutorial: "doc:GettingStarted")
+        @TutorialReference(tutorial: "doc:SwiftyChainGettingStarted")
     }
 }

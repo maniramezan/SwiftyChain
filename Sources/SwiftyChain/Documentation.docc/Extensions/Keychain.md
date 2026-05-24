@@ -12,10 +12,23 @@ instance with a custom backend to avoid hitting the real keychain.
 // Production
 let token = try await Keychain.shared.load(key: myKey)
 
-// Tests
-let mock = MockKeychainBackend()
-let keychain = Keychain(backend: mock)
+// Tests — inject a mock backend
+let keychain = Keychain(backend: MockKeychainBackend())
 ```
+
+### Choosing the Right Write Method
+
+> Tip: Prefer ``upsert(_:for:)`` for most writes — it creates the item if it
+> does not exist or replaces it if it does, in one call. Use ``save(_:for:)``
+> only when you want to detect a duplicate explicitly, and ``update(_:for:)``
+> only when you are certain the item already exists.
+
+### Observation and @KeychainStorage
+
+> Note: Changes made through ``KeychainStorage`` bypass the `Keychain` actor
+> and do **not** emit observation events from
+> ``observeKeychainChanges(service:accessGroup:)``. If you need change
+> notifications, perform writes through ``Keychain/shared`` directly.
 
 ## Topics
 
@@ -57,3 +70,8 @@ let keychain = Keychain(backend: mock)
 
 - ``observeKeychainChanges(service:accessGroup:)``
 
+### Cryptographic Keys
+
+- ``saveCryptoKey(_:for:)``
+- ``loadCryptoKey(keyRef:)``
+- ``deleteCryptoKey(keyRef:)``

@@ -13,11 +13,49 @@ Key design goals:
 - **Testability** -- Inject a custom backend to unit-test without touching the real keychain.
 - **Ergonomics** -- `@KeychainStorage` gives you `@AppStorage`-style property-wrapper access.
 
+## Installation
+
+Add SwiftyChain to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/maniramezan/SwiftyChain", from: "1.0.0"),
+],
+targets: [
+    .target(
+        name: "MyTarget",
+        dependencies: [
+            .product(name: "SwiftyChain", package: "SwiftyChain"),
+        ]
+    ),
+]
+```
+
+### Optional Traits
+
+SwiftyChain ships several opt-in traits that gate additional features at compile time. Enable only what you need:
+
+| Trait | What it adds |
+|---|---|
+| `macros` | `@KeychainItem`, `@KeychainScope`, and `#keychainKey(...)` compile-time macros |
+| `observation` | ``Keychain/observeKeychainChanges(service:accessGroup:)`` and ``KeychainChangeEvent`` |
+| `cryptography` | ``Keychain/saveCryptoKey(_:for:)``, ``Keychain/loadCryptoKey(keyRef:)``, ``Keychain/deleteCryptoKey(keyRef:)``, ``CryptoKeyReference``, ``StoredSecKey`` |
+
+Enable traits by passing them to the product dependency:
+
+```swift
+.product(
+    name: "SwiftyChain",
+    package: "SwiftyChain",
+    traits: ["macros", "observation", "cryptography"]
+)
+```
+
 ## Topics
 
 ### Essentials
 
-- <doc:SwiftyChainTutorials>
+- <doc:GettingStarted>
 - ``Keychain``
 - ``KeychainKey``
 
@@ -41,12 +79,26 @@ Key design goals:
 ### Accessibility and Security
 
 - ``KeychainAccessibility``
+
+### Bulk Deletion
+
 - ``KeychainDeleteQuery``
+- ``KeychainItemClass``
 
 ### Errors
 
 - ``KeychainError``
 
+### Observation
+
+- ``KeychainChangeEvent``
+
 ### Macros
 
 - <doc:UsingMacros>
+
+### Cryptographic Keys
+
+- ``CryptoKeyReference``
+- ``StoredSecKey``
+- ``CryptoKeyStorable``

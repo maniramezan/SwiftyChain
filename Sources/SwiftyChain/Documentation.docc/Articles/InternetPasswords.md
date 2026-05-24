@@ -35,6 +35,15 @@ let password = try await Keychain.shared.loadInternetPassword(for: githubKey)
 try await Keychain.shared.deleteInternetPassword(for: githubKey)
 ```
 
+### Item Identity
+
+> Important: All fields of ``InternetPasswordKey`` — server, account, port,
+> path, protocol, and authentication type — participate in item identity.
+> Two keys with the same server and account but different ports or protocols
+> refer to **different** keychain items. If you change any of these fields
+> after storing a password, you will not find the existing item; you will
+> create a new one instead.
+
 ### When to Use Internet Passwords
 
 Use ``InternetPasswordKey`` when:

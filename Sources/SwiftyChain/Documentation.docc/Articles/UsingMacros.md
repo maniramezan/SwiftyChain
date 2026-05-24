@@ -5,8 +5,8 @@ Reduce boilerplate with SwiftyChain's Swift macros.
 ## Overview
 
 SwiftyChain ships three macros that generate keychain plumbing at compile
-time. They require the `macros` package trait to be enabled by consumers
-(see <doc:SwiftyChain>) and Swift 5.9+.
+time. They require the `macros` package trait to be enabled (see the
+Installation section in <doc:SwiftyChain>) and Swift 5.9+.
 
 ### @KeychainScope
 
@@ -28,7 +28,14 @@ try await Secrets.shared.deleteAll()
 
 The scope macro adds `static let shared = Self()` and `deleteAll()` to the
 annotated type. Each `@KeychainItem` still declares its own service
-explicitly so the generated `KeychainKey` is self-contained.
+explicitly so the generated ``KeychainKey`` is self-contained and usable
+independently of the scope — you can pass `Secrets.apiTokenKey` to
+``Keychain/load(key:)`` directly without going through the scope.
+
+> Note: The `service` argument on each `@KeychainItem` does not have to
+> match the `@KeychainScope` service, but it should for `deleteAll()` to
+> cover all items in the scope. Keeping them in sync is a convention, not
+> a compile-time requirement.
 
 ### @KeychainItem
 
