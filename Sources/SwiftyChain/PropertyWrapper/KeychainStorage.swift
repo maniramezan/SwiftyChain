@@ -18,10 +18,27 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     private let defaultValue: Value?
     private let errorBox: ErrorBox
 
+    /// The last ``KeychainError`` that occurred during a get or set, or `nil` if the last operation succeeded.
+    ///
+    /// Access this via the projected value syntax:
+    /// ```swift
+    /// if let error = $token {
+    ///     print("Keychain error:", error)
+    /// }
+    /// ```
     public var projectedValue: KeychainError? {
         errorBox.value
     }
 
+    /// Creates a keychain-backed property wrapper.
+    ///
+    /// - Parameters:
+    ///   - account: The account identifier for this keychain item.
+    ///   - service: The service name that groups related items (e.g., your app's bundle ID).
+    ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
+    ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
+    ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
+    ///   - defaultValue: The value returned when no item exists in the keychain. Defaults to `nil`.
     public init(
         _ account: String,
         service: String,
@@ -62,6 +79,13 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
         self.errorBox = ErrorBox()
     }
 
+    /// The current keychain value, or `defaultValue` (typically `nil`) when absent or on error.
+    ///
+    /// Setting this property to a non-`nil` value creates or updates the keychain item;
+    /// setting it to `nil` deletes the item. Both operations are non-mutating, so this
+    /// wrapper can be declared with `let` or used from non-mutating contexts.
+    ///
+    /// If an error occurs during get or set, it is captured in ``projectedValue``.
     public var wrappedValue: Value? {
         get {
             do {
