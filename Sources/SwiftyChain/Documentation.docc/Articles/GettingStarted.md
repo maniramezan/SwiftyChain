@@ -8,9 +8,9 @@ SwiftyChain replaces the raw `SecItem*` C API with three building blocks:
 
 - **``KeychainKey``** — a typed descriptor that identifies a keychain item.
 - **``Keychain``** — an `actor` that performs thread-safe CRUD operations.
-- **``KeychainStorage``** — a property wrapper for synchronous, `@AppStorage`-style access.
+- **``KeychainStorage``** / **``DefaultedKeychainStorage``** — property wrappers for synchronous, `@AppStorage`-style access.
 
-This article walks through a complete first-use example using the `Keychain` actor. For SwiftUI-centric usage see ``KeychainStorage``.
+This article walks through a complete first-use example using the `Keychain` actor. For SwiftUI-centric usage see ``KeychainStorage`` and ``DefaultedKeychainStorage``.
 
 ## Define a Key
 
@@ -96,6 +96,6 @@ try await Keychain.shared.deleteAll(service: "com.example.app")
 
 - **Custom types** — Conform your own `Codable` or custom types to ``KeychainStorable``. See <doc:CustomStorableTypes>.
 - **Internet passwords** — Store credentials associated with a server and protocol. See <doc:InternetPasswords>.
-- **SwiftUI** — Use ``KeychainStorage`` for synchronous, `@AppStorage`-style property-wrapper access in SwiftUI views. See <doc:SwiftyChainKeychainStorage>.
+- **SwiftUI** — Use ``KeychainStorage`` for optional values and ``DefaultedKeychainStorage`` for fallback-backed values. See <doc:SwiftyChainKeychainStorage>.
 - **Macros** — Reduce boilerplate with `@KeychainItem` and `@KeychainScope`. See <doc:UsingMacros>.
 - **iCloud sync** — Set `isSynchronizable: true` on a ``KeychainKey`` to sync the value across the user's devices via iCloud Keychain.

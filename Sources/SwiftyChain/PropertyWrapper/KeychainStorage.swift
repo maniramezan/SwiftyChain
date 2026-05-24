@@ -15,7 +15,6 @@ import Security
 public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     private let key: KeychainKey<Value>
     private let backend: any KeychainBackend
-    private let defaultValue: Value?
     private let errorBox: ErrorBox
 
     /// The last ``KeychainError`` that occurred during a get or set, or `nil` if the last operation succeeded.
@@ -38,14 +37,12 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
     ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
     ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
-    ///   - defaultValue: The value returned when no item exists in the keychain. Defaults to `nil`.
     public init(
         _ account: String,
         service: String,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility = .whenUnlocked,
-        isSynchronizable: Bool = false,
-        defaultValue: Value? = nil
+        isSynchronizable: Bool = false
     ) {
         self.init(
             account,
@@ -53,8 +50,7 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
             backend: AppleKeychainBackend(),
             accessGroup: accessGroup,
             accessibility: accessibility,
-            isSynchronizable: isSynchronizable,
-            defaultValue: defaultValue
+            isSynchronizable: isSynchronizable
         )
     }
 
@@ -64,8 +60,7 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
         backend: any KeychainBackend,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility = .whenUnlocked,
-        isSynchronizable: Bool = false,
-        defaultValue: Value? = nil
+        isSynchronizable: Bool = false
     ) {
         self.key = KeychainKey(
             service: service,
@@ -75,11 +70,10 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
             isSynchronizable: isSynchronizable
         )
         self.backend = backend
-        self.defaultValue = defaultValue
         self.errorBox = ErrorBox()
     }
 
-    /// The current keychain value, or `defaultValue` (typically `nil`) when absent or on error.
+    /// The current keychain value, or `nil` when absent or on error.
     ///
     /// Setting this property to a non-`nil` value creates or updates the keychain item;
     /// setting it to `nil` deletes the item. Both operations are non-mutating, so this
@@ -99,13 +93,13 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                 return try Value.fromKeychainData(data)
             } catch KeychainError.itemNotFound {
                 errorBox.value = nil
-                return defaultValue
+                return nil
             } catch let error as KeychainError {
                 errorBox.value = error
-                return defaultValue
+                return nil
             } catch {
                 errorBox.value = .unexpectedData
-                return defaultValue
+                return nil
             }
         }
         nonmutating set {
@@ -159,5 +153,79 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
             get { lock.withLock { _value } }
             set { lock.withLock { _value = newValue } }
         }
+    }
+}
+
+/// Synchronous, `@AppStorage`-shaped access to a single keychain value with a fallback.
+///
+/// ``DefaultedKeychainStorage`` always returns a concrete value. When the item is missing
+/// or a read fails, it falls back to `defaultValue` and records any keychain error in the
+/// projected value.
+@propertyWrapper
+public struct DefaultedKeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
+    private let storage: KeychainStorage<Value>
+    private let defaultValue: Value
+
+    /// The last ``KeychainError`` that occurred during a get or set, or `nil` if the last operation succeeded.
+    public var projectedValue: KeychainError? {
+        storage.projectedValue
+    }
+
+    /// Creates a keychain-backed property wrapper with a required fallback value.
+    ///
+    /// - Parameters:
+    ///   - account: The account identifier for this keychain item.
+    ///   - service: The service name that groups related items (e.g., your app's bundle ID).
+    ///   - defaultValue: The value returned when no item exists in the keychain or a read fails.
+    ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
+    ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
+    ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
+    public init(
+        _ account: String,
+        service: String,
+        defaultValue: Value,
+        accessGroup: String? = nil,
+        accessibility: KeychainAccessibility = .whenUnlocked,
+        isSynchronizable: Bool = false
+    ) {
+        self.init(
+            account,
+            service: service,
+            backend: AppleKeychainBackend(),
+            defaultValue: defaultValue,
+            accessGroup: accessGroup,
+            accessibility: accessibility,
+            isSynchronizable: isSynchronizable
+        )
+    }
+
+    public init(
+        _ account: String,
+        service: String,
+        backend: any KeychainBackend,
+        defaultValue: Value,
+        accessGroup: String? = nil,
+        accessibility: KeychainAccessibility = .whenUnlocked,
+        isSynchronizable: Bool = false
+    ) {
+        self.storage = KeychainStorage(
+            account,
+            service: service,
+            backend: backend,
+            accessGroup: accessGroup,
+            accessibility: accessibility,
+            isSynchronizable: isSynchronizable
+        )
+        self.defaultValue = defaultValue
+    }
+
+    /// The current keychain value, or `defaultValue` when absent or on error.
+    ///
+    /// Setting this property writes the new value into the keychain. To delete the item,
+    /// use the underlying ``Keychain`` API or switch to ``KeychainStorage`` if `nil`
+    /// assignment is the intended behavior.
+    public var wrappedValue: Value {
+        get { storage.wrappedValue ?? defaultValue }
+        nonmutating set { storage.wrappedValue = newValue }
     }
 }

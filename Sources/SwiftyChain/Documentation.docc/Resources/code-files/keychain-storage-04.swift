@@ -1,13 +1,13 @@
 import SwiftyChain
 
 struct SharedSecrets {
-    @KeychainStorage(
+    @DefaultedKeychainStorage(
         "refresh-token",
         service: "com.example.myapp",
+        defaultValue: "",
         accessGroup: "group.com.example.myapp",
         accessibility: .afterFirstUnlock,
-        isSynchronizable: true,
-        defaultValue: ""
+        isSynchronizable: true
     )
-    var refreshToken: String?
+    var refreshToken: String
 }

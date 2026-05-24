@@ -51,7 +51,7 @@
             - `accessGroup` for app and extension sharing.
             - `accessibility` to control when the value is readable.
             - `isSynchronizable` to opt into iCloud Keychain sync.
-            - `defaultValue` to return a fallback when the item is missing.
+            - ``DefaultedKeychainStorage`` when the property should fall back to a non-optional value.
         }
 
         @Steps {

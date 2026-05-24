@@ -18,7 +18,6 @@ The remaining parameters are optional:
 - `accessGroup` — use when the value must be shared between multiple apps or extensions.
 - `accessibility` — controls when the item can be read, such as `.whenUnlocked`.
 - `isSynchronizable` — set to `true` to participate in iCloud Keychain sync.
-- `defaultValue` — the fallback returned when the item is missing or a read fails.
 
 Both the wrapped getter and setter are non-mutating, so you can hold a
 `@KeychainStorage` property on a `let`, read it from a SwiftUI `View.body`,
@@ -58,17 +57,17 @@ struct SessionStore {
 
 ### Provide a Default Value
 
-`defaultValue` is returned when the item does not exist yet, which is handy
-for simple flags or counters:
+Use ``SwiftyChain/DefaultedKeychainStorage`` when the property should always
+read as a concrete value instead of an optional:
 
 ```swift
 struct Preferences {
-    @KeychainStorage(
+    @DefaultedKeychainStorage(
         "has-onboarded",
         service: "com.example.myapp",
         defaultValue: false
     )
-    var hasOnboarded: Bool?
+    var hasOnboarded: Bool
 }
 ```
 
@@ -114,9 +113,13 @@ struct SyncedSecrets {
 
 ### Creating
 
-- ``init(_:service:accessGroup:accessibility:isSynchronizable:defaultValue:)``
+- ``init(_:service:accessGroup:accessibility:isSynchronizable:)``
 
 ### Accessing Values
 
 - ``wrappedValue``
 - ``projectedValue``
+
+### Related
+
+- ``DefaultedKeychainStorage``

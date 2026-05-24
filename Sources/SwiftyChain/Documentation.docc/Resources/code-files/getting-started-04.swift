@@ -1,8 +1,8 @@
 import SwiftyChain
 
 struct Settings {
-    @KeychainStorage("api-token", service: "com.example.myapp")
-    var token: String?
+    @DefaultedKeychainStorage("api-token", service: "com.example.myapp", defaultValue: "")
+    var token: String
 }
 
 var settings = Settings()
@@ -11,9 +11,7 @@ var settings = Settings()
 settings.token = "sk-new-token"
 
 // Read
-if let token = settings.token {
-    print("Token: \(token)")
-}
+print("Token: \(settings.token)")
 
 // Check for errors via the projected value
 if let error = settings.$token {
