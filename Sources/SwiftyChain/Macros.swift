@@ -31,21 +31,25 @@
     /// - Writes with `nil` delete the item.
     ///
     /// ```swift
+    /// import OSLog
+    ///
     /// class AppSecrets {
-    ///     @KeychainItem(service: "com.example.app", account: "token")
+    ///     @KeychainItem("token", service: "com.example.app")
     ///     var authToken: String?
     /// }
     ///
     /// let secrets = AppSecrets()
+    /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
+    ///
     /// secrets.authToken = "abc123"          // saves to keychain
-    /// print(secrets.authToken ?? "missing") // loads from keychain
+    /// logger.debug("Token present: \(secrets.authToken != nil, privacy: .public)")
     /// secrets.authToken = nil               // deletes from keychain
     /// ```
     @attached(accessor)
     @attached(peer, names: prefixed(_), arbitrary)
     public macro KeychainItem(
-        service: String,
-        account: String,
+        _ account: String,
+        service: String? = nil,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility = .whenUnlocked,
         isSynchronizable: Bool = false,
@@ -62,10 +66,10 @@
     /// ```swift
     /// @KeychainScope(service: "com.example.app")
     /// class AppSecrets {
-    ///     @KeychainItem(account: "auth-token")
+    ///     @KeychainItem("auth-token")
     ///     var authToken: String?
     ///
-    ///     @KeychainItem(account: "refresh-token")
+    ///     @KeychainItem("refresh-token")
     ///     var refreshToken: String?
     /// }
     /// ```

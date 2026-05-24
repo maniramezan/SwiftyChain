@@ -48,20 +48,31 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
         }
 
         let arguments = node.arguments?.as(LabeledExprListSyntax.self)
-        let account = arguments?.expressionText(named: "account", default: "\"\"") ?? "\"\""
-        if arguments?.stringLiteral(named: "account")?.isEmpty == true {
+        let account = arguments?.unlabeledExpressionText(default: "\"\"") ?? "\"\""
+        if arguments?.unlabeledStringLiteral()?.isEmpty == true {
             context.diagnose(node, "account must be a non-empty string literal")
         }
         if arguments?.stringLiteral(named: "service")?.isEmpty == true {
             context.diagnose(node, "service must be a non-empty string literal")
         }
 
+        let scope = enclosingScope(for: declaration)
+        let service: String
+        if let explicitService = arguments?.expressionText(named: "service", default: "") {
+            service = explicitService.isEmpty ? "Self._keychainScopeService" : explicitService
+        } else if scope != nil {
+            service = "Self._keychainScopeService"
+        } else {
+            context.diagnose(node, "service is required unless the enclosing type uses @KeychainScope")
+            service = "\"\""
+        }
+
         let name = identifier.identifier.text
         let type = typeAnnotation.type.trimmedDescription
         let valueType = wrappedValueType(from: type)
         let setterName = "set\(name.prefix(1).uppercased())\(name.dropFirst())"
-        let service = arguments?.expressionText(named: "service", default: "\"\"") ?? "\"\""
-        let accessGroup = arguments?.expressionText(named: "accessGroup", default: "nil") ?? "nil"
+        let accessGroup = arguments?.expressionText(named: "accessGroup", default: scope == nil ? "nil" : "Self._keychainScopeAccessGroup")
+            ?? (scope == nil ? "nil" : "Self._keychainScopeAccessGroup")
         let accessibility =
             arguments?.expressionText(named: "accessibility", default: ".whenUnlocked") ?? ".whenUnlocked"
         let isSynchronizable = arguments?.expressionText(named: "isSynchronizable", default: "false") ?? "false"
@@ -82,6 +93,54 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
             """,
             setterMethod(name: setterName, type: type, keyName: name),
         ]
+    }
+
+    private static func enclosingScope(for declaration: some DeclSyntaxProtocol) -> ScopeValues? {
+        var current = Syntax(declaration).parent
+        while let node = current {
+            if let attributes = node.as(ClassDeclSyntax.self)?.attributes,
+                let scope = scopeValues(from: attributes)
+            {
+                return scope
+            }
+            if let attributes = node.as(StructDeclSyntax.self)?.attributes,
+                let scope = scopeValues(from: attributes)
+            {
+                return scope
+            }
+            if let attributes = node.as(EnumDeclSyntax.self)?.attributes,
+                let scope = scopeValues(from: attributes)
+            {
+                return scope
+            }
+            current = node.parent
+        }
+        return nil
+    }
+
+    private static func scopeValues(from attributes: AttributeListSyntax) -> ScopeValues? {
+        for element in attributes {
+            guard let attribute = element.as(AttributeSyntax.self),
+                attribute.attributeName.trimmedDescription == "KeychainScope",
+                let arguments = attribute.arguments?.as(LabeledExprListSyntax.self),
+                let service = arguments.stringLiteral(named: "service"),
+                !service.isEmpty
+            else {
+                continue
+            }
+
+            return ScopeValues(
+                service: service,
+                accessGroup: arguments.expressionText(named: "accessGroup", default: "nil")
+            )
+        }
+
+        return nil
+    }
+
+    private struct ScopeValues {
+        let service: String
+        let accessGroup: String
     }
 
     private static func isOptional(_ type: String) -> Bool {

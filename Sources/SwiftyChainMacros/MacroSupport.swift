@@ -15,6 +15,25 @@ struct SwiftyChainMacroDiagnostic: DiagnosticMessage {
 }
 
 extension LabeledExprListSyntax {
+    var unlabeledExpression: ExprSyntax? {
+        first { $0.label == nil }?.expression
+    }
+
+    func unlabeledExpressionText(default defaultValue: String) -> String {
+        unlabeledExpression?.trimmedDescription ?? defaultValue
+    }
+
+    func unlabeledStringLiteral() -> String? {
+        guard let expression = unlabeledExpression,
+            let literal = expression.as(StringLiteralExprSyntax.self),
+            literal.segments.count == 1,
+            case .stringSegment(let segment)? = literal.segments.first
+        else {
+            return nil
+        }
+        return segment.content.text
+    }
+
     func expression(named name: String) -> ExprSyntax? {
         first { $0.label?.text == name }?.expression
     }

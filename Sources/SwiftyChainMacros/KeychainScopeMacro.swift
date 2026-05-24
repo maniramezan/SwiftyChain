@@ -22,10 +22,16 @@ public struct KeychainScopeMacro: MemberMacro, PeerMacro {
             static let shared = Self()
             """,
             """
+            fileprivate static let _keychainScopeService = \(raw: arguments.expressionText(named: "service", default: "\"\""))
+            """,
+            """
+            fileprivate static let _keychainScopeAccessGroup = \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
+            """,
+            """
             func deleteAll() async throws {
                 try await Keychain.shared.deleteAll(
-                    service: \(raw: arguments.expressionText(named: "service", default: "\"\"")),
-                    accessGroup: \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
+                    service: Self._keychainScopeService,
+                    accessGroup: Self._keychainScopeAccessGroup
                 )
             }
             """,

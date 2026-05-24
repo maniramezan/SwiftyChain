@@ -69,7 +69,7 @@ func keychainItemMacroExpandsOptionalProperty() {
     assertMacroExpansion(
         """
         struct AuthStore {
-            @KeychainItem(service: "app", account: "token")
+            @KeychainItem("token", service: "app")
             var authToken: String?
         }
         """,
@@ -109,7 +109,7 @@ func keychainItemMacroExpandsRequiredProperty() {
     assertMacroExpansion(
         """
         struct AuthStore {
-            @KeychainItem(service: "app", account: "device")
+            @KeychainItem("device", service: "app")
             var deviceID: String
         }
         """,
@@ -153,10 +153,14 @@ func keychainScopeMacroExpandsDeleteAll() {
 
                 static let shared = Self()
 
+                fileprivate static let _keychainScopeService = "app"
+
+                fileprivate static let _keychainScopeAccessGroup = nil
+
                 func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
-                        service: "app",
-                        accessGroup: nil
+                        service: Self._keychainScopeService,
+                        accessGroup: Self._keychainScopeAccessGroup
                     )
                 }
             }
@@ -170,7 +174,7 @@ func keychainItemMacroDiagnosesEmptyService() {
     assertMacroExpansion(
         """
         struct AuthStore {
-            @KeychainItem(service: "", account: "token")
+            @KeychainItem("token", service: "")
             var authToken: String?
         }
         """,
@@ -204,6 +208,107 @@ func keychainItemMacroDiagnosesEmptyService() {
         diagnostics: [
             DiagnosticSpec(
                 message: "service must be a non-empty string literal",
+                line: 2,
+                column: 5,
+            )
+        ],
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
+    assertMacroExpansion(
+        """
+        @KeychainScope(service: "app", accessGroup: "group.shared")
+        struct AuthStore {
+            @KeychainItem("token")
+            var authToken: String?
+        }
+        """,
+        expandedSource: """
+            struct AuthStore {
+                var authToken: String? {
+                    get async throws {
+                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                    }
+                }
+
+                fileprivate static let _authTokenKey = KeychainKey<String>(
+                    service: Self._keychainScopeService,
+                    account: "token",
+                    accessGroup: Self._keychainScopeAccessGroup,
+                    accessibility: .whenUnlocked,
+                    isSynchronizable: false,
+                    label: nil,
+                    comment: nil
+                )
+
+                func setAuthToken(_ newValue: String?) async throws {
+                    if let newValue {
+                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                    } else {
+                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                    }
+                }
+
+                static let shared = Self()
+
+                fileprivate static let _keychainScopeService = "app"
+
+                fileprivate static let _keychainScopeAccessGroup = "group.shared"
+
+                func deleteAll() async throws {
+                    try await Keychain.shared.deleteAll(
+                        service: Self._keychainScopeService,
+                        accessGroup: Self._keychainScopeAccessGroup
+                    )
+                }
+            }
+            """,
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainItemMacroDiagnosesMissingServiceOutsideScope() {
+    assertMacroExpansion(
+        """
+        struct AuthStore {
+            @KeychainItem("token")
+            var authToken: String?
+        }
+        """,
+        expandedSource: """
+            struct AuthStore {
+                var authToken: String? {
+                    get async throws {
+                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                    }
+                }
+
+                fileprivate static let _authTokenKey = KeychainKey<String>(
+                    service: "",
+                    account: "token",
+                    accessGroup: nil,
+                    accessibility: .whenUnlocked,
+                    isSynchronizable: false,
+                    label: nil,
+                    comment: nil
+                )
+
+                func setAuthToken(_ newValue: String?) async throws {
+                    if let newValue {
+                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                    } else {
+                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                    }
+                }
+            }
+            """,
+        diagnostics: [
+            DiagnosticSpec(
+                message: "service is required unless the enclosing type uses @KeychainScope",
                 line: 2,
                 column: 5,
             )
