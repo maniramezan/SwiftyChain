@@ -8,4 +8,8 @@
         @Image(source: "chapter-getting-started.png", alt: "Getting started with SwiftyChain")
         @TutorialReference(tutorial: "doc:SwiftyChainGettingStarted")
     }
+
+    @Chapter(name: "Property Wrapper") {
+        @TutorialReference(tutorial: "doc:SwiftyChainKeychainStorage")
+    }
 }

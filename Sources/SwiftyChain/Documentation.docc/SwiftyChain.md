@@ -10,7 +10,7 @@ Key design goals:
 
 - **Type safety** -- Generic ``KeychainKey`` descriptors prevent accidental type mismatches.
 - **Concurrency** -- ``Keychain`` is an `actor`, so every operation is data-race free.
-- **Testability** -- Inject a custom backend to unit-test without touching the real keychain.
+- **Testability** -- Depend on ``KeychainProtocol`` or inject a ``KeychainBackend`` to test without touching the real keychain.
 - **Ergonomics** -- `@KeychainStorage` gives you `@AppStorage`-style property-wrapper access.
 
 ## Installation
@@ -68,6 +68,13 @@ Enable traits by passing them to the product dependency:
 ### Property Wrapper
 
 - ``KeychainStorage``
+- <doc:SwiftyChainKeychainStorage>
+
+### Testing
+
+- ``KeychainProtocol``
+- ``KeychainBackend``
+- <doc:Testing>
 
 ### Internet Passwords
 

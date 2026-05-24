@@ -1,0 +1,65 @@
+@Tutorial(time: 8) {
+    @Intro(title: "Using KeychainStorage") {
+        Learn how to use ``KeychainStorage`` for synchronous,
+        `@AppStorage`-style access, including which initializer
+        parameters are required and when to use the optional ones.
+    }
+
+    @Section(title: "Start with the Required Parameters") {
+        @ContentAndMedia {
+            The smallest `@KeychainStorage` declaration only needs two
+            arguments:
+
+            - `account` identifies the item inside the keychain.
+            - `service` groups related items, usually your app's bundle identifier.
+        }
+
+        @Steps {
+            @Step {
+                Declare a property wrapper with only `account` and `service`.
+
+                @Code(name: "MinimalStorage.swift", file: "keychain-storage-01.swift")
+            }
+        }
+    }
+
+    @Section(title: "Read and Write Values") {
+        @ContentAndMedia {
+            `@KeychainStorage` behaves like an optional property. Assigning a
+            non-`nil` value stores it. Assigning `nil` deletes it.
+        }
+
+        @Steps {
+            @Step {
+                Read and write the wrapped value like any other optional.
+
+                @Code(name: "ReadWriteStorage.swift", file: "keychain-storage-02.swift")
+            }
+
+            @Step {
+                Check the projected value when you want the last keychain error.
+
+                @Code(name: "StorageError.swift", file: "keychain-storage-03.swift")
+            }
+        }
+    }
+
+    @Section(title: "Use Optional Parameters Only When Needed") {
+        @ContentAndMedia {
+            The remaining initializer parameters are situational:
+
+            - `accessGroup` for app and extension sharing.
+            - `accessibility` to control when the value is readable.
+            - `isSynchronizable` to opt into iCloud Keychain sync.
+            - `defaultValue` to return a fallback when the item is missing.
+        }
+
+        @Steps {
+            @Step {
+                Add optional parameters for shared access, custom security, or fallback values.
+
+                @Code(name: "StorageOptions.swift", file: "keychain-storage-04.swift")
+            }
+        }
+    }
+}

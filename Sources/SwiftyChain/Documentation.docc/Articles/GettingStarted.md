@@ -96,6 +96,6 @@ try await Keychain.shared.deleteAll(service: "com.example.app")
 
 - **Custom types** — Conform your own `Codable` or custom types to ``KeychainStorable``. See <doc:CustomStorableTypes>.
 - **Internet passwords** — Store credentials associated with a server and protocol. See <doc:InternetPasswords>.
-- **SwiftUI** — Use ``KeychainStorage`` for synchronous, `@AppStorage`-style property-wrapper access in SwiftUI views.
+- **SwiftUI** — Use ``KeychainStorage`` for synchronous, `@AppStorage`-style property-wrapper access in SwiftUI views. See <doc:SwiftyChainKeychainStorage>.
 - **Macros** — Reduce boilerplate with `@KeychainItem` and `@KeychainScope`. See <doc:UsingMacros>.
 - **iCloud sync** — Set `isSynchronizable: true` on a ``KeychainKey`` to sync the value across the user's devices via iCloud Keychain.
