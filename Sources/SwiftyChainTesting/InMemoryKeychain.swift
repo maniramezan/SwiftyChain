@@ -245,12 +245,13 @@ public actor InMemoryKeychain: KeychainProtocol {
         }
 
         private func notify(service: String, account: String?, kind: MutationKind) {
-            let eventKind: KeychainChangeEvent.Kind = switch kind {
-            case .saved: .saved
-            case .updated: .updated
-            case .deleted: .deleted
-            case .bulkDeleted: .bulkDeleted
-            }
+            let eventKind: KeychainChangeEvent.Kind =
+                switch kind {
+                case .saved: .saved
+                case .updated: .updated
+                case .deleted: .deleted
+                case .bulkDeleted: .bulkDeleted
+                }
             let event = KeychainChangeEvent(service: service, account: account, kind: eventKind)
             for observer in observers.values where observer.service == service {
                 observer.continuation.yield(event)

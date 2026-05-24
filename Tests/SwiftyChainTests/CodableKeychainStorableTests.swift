@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 import SwiftyChain
 import SwiftyChainTesting
+import Testing
 
 private struct Credentials: Codable, Sendable, Equatable {
     let username: String

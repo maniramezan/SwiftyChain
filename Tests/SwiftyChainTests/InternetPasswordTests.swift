@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 import SwiftyChain
 import SwiftyChainTesting
+import Testing
 
 @Test
 func internetPasswordRoundTrips() async throws {

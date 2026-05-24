@@ -1,6 +1,6 @@
-import Testing
 import SwiftyChain
 import SwiftyChainTesting
+import Testing
 
 @Test
 func consumerCanUseInMemoryKeychainThroughProtocol() async throws {

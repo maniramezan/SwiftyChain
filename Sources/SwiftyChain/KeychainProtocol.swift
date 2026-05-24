@@ -32,21 +32,21 @@ public protocol KeychainProtocol: Actor, Sendable {
     #endif
 }
 
-public extension KeychainProtocol {
-    func deleteAll(service: String) throws {
+extension KeychainProtocol {
+    public func deleteAll(service: String) throws {
         try deleteAll(service: service, accessGroup: nil)
     }
 
-    func deleteAllSynchronizable(service: String) throws {
+    public func deleteAllSynchronizable(service: String) throws {
         try deleteAllSynchronizable(service: service, accessGroup: nil)
     }
 
-    func allAccounts(service: String) throws -> [String] {
+    public func allAccounts(service: String) throws -> [String] {
         try allAccounts(service: service, accessGroup: nil)
     }
 
     #if Observation
-        func observeKeychainChanges(service: String) -> AsyncStream<KeychainChangeEvent> {
+        public func observeKeychainChanges(service: String) -> AsyncStream<KeychainChangeEvent> {
             observeKeychainChanges(service: service, accessGroup: nil)
         }
     #endif

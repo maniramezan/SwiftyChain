@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import SwiftyChain
+import Testing
 
 @Test(arguments: ["", "token", "hello world"])
 func stringRoundTrips(value: String) throws {

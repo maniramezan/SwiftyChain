@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import SwiftyChain
+import Testing
 
 private struct DummyError: Error, CustomStringConvertible {
     let description: String
