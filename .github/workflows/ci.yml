@@ -11,7 +11,7 @@ permissions:
 
 env:
   XCODE_PATH: /Applications/Xcode_26.4.1.app/Contents/Developer
-  TRAITS: "macros,cryptography,observation"
+  TRAITS: "cryptography,observation"
   COVERAGE_MIN: "80"
 
 jobs:
