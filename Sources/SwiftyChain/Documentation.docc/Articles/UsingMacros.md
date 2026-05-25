@@ -9,9 +9,9 @@ time, available out of the box with no extra trait required.
 
 ### @KeychainScope
 
-Annotate a type to group related keychain items under a shared service,
-gain a `static shared` singleton, and a `deleteAll()` helper that
-bulk-deletes every item stored under that service:
+Annotate a type to group related keychain items under a shared service
+and gain a `static deleteAll()` helper that bulk-deletes every item
+stored under that service:
 
 ```swift
 @KeychainScope(service: "com.example.app")
@@ -23,11 +23,11 @@ final class Secrets {
     var refreshToken: String?
 }
 
-try await Secrets.shared.deleteAll()
+try await Secrets.deleteAll()
 ```
 
-The scope macro adds `static let shared = Self()` and `deleteAll()` to the
-annotated type. `@KeychainItem` properties inside a scope omit `service:` —
+The scope macro adds a `static func deleteAll()` to the annotated type.
+`@KeychainItem` properties inside a scope omit `service:` —
 the scope injects it automatically into every generated ``KeychainKey``.
 
 ### @KeychainItem

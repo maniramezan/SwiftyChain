@@ -19,16 +19,14 @@ public struct KeychainScopeMacro: MemberMacro {
 
         return [
             """
-            static let shared = Self()
-            """,
-            """
             fileprivate static let _keychainScopeService = \(raw: arguments.expressionText(named: "service", default: "\"\""))
             """,
+            // String? annotation is required: bare `nil` has no type context and won't compile.
             """
-            fileprivate static let _keychainScopeAccessGroup = \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
+            fileprivate static let _keychainScopeAccessGroup: String? = \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
             """,
             """
-            func deleteAll() async throws {
+            static func deleteAll() async throws {
                 try await Keychain.shared.deleteAll(
                     service: Self._keychainScopeService,
                     accessGroup: Self._keychainScopeAccessGroup

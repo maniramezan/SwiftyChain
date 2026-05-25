@@ -56,10 +56,17 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
             context.diagnose(node, "service must be a non-empty string literal")
         }
 
-        let scope = enclosingScope(for: declaration)
+        let scope = enclosingScope(in: context)
+        // `service` resolution: prefer explicit arg, then scope reference, then error.
+        // We reference the scope via `Self._keychainScopeService` rather than inlining
+        // the literal because the parent-chain traversal in the real macro plugin may
+        // not always be available. `Self` is safe here because the key is emitted as a
+        // computed property (not a stored property), so Swift's covariant-Self
+        // restriction does not apply.
+        let explicitService = arguments?.expressionText(named: "service", default: "") ?? ""
         let service: String
-        if let explicitService = arguments?.expressionText(named: "service", default: "") {
-            service = explicitService.isEmpty ? "Self._keychainScopeService" : explicitService
+        if !explicitService.isEmpty {
+            service = explicitService
         } else if scope != nil {
             service = "Self._keychainScopeService"
         } else {
@@ -82,24 +89,30 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
         let comment = arguments?.expressionText(named: "comment", default: "nil") ?? "nil"
 
         return [
+            // Computed property (not stored) so that `Self._keychainScopeService` and
+            // `Self._keychainScopeAccessGroup` are legal in both structs and classes.
+            // Swift only restricts covariant `Self` in stored-property initialisers.
             """
-            fileprivate static let _\(raw: name)Key = KeychainKey<\(raw: valueType)>(
-                service: \(raw: service),
-                account: \(raw: account),
-                accessGroup: \(raw: accessGroup),
-                accessibility: \(raw: accessibility),
-                isSynchronizable: \(raw: isSynchronizable),
-                label: \(raw: label),
-                comment: \(raw: comment)
-            )
+            fileprivate static var _\(raw: name)Key: KeychainKey<\(raw: valueType)> {
+                KeychainKey<\(raw: valueType)>(
+                    service: \(raw: service),
+                    account: \(raw: account),
+                    accessGroup: \(raw: accessGroup),
+                    accessibility: \(raw: accessibility),
+                    isSynchronizable: \(raw: isSynchronizable),
+                    label: \(raw: label),
+                    comment: \(raw: comment)
+                )
+            }
             """,
             setterMethod(name: setterName, type: type, keyName: name),
         ]
     }
 
-    private static func enclosingScope(for declaration: some DeclSyntaxProtocol) -> ScopeValues? {
-        var current = Syntax(declaration).parent
-        while let node = current {
+    // `context.lexicalContext` is the correct way to walk enclosing scopes in the
+    // real macro plugin — `.parent` traversal is unreliable in that context.
+    private static func enclosingScope(in context: some MacroExpansionContext) -> ScopeValues? {
+        for node in context.lexicalContext {
             if let attributes = node.as(ClassDeclSyntax.self)?.attributes,
                 let scope = scopeValues(from: attributes)
             {
@@ -115,7 +128,6 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
             {
                 return scope
             }
-            current = node.parent
         }
         return nil
     }

@@ -81,15 +81,17 @@ func keychainItemMacroExpandsOptionalProperty() {
                     }
                 }
 
-                fileprivate static let _authTokenKey = KeychainKey<String>(
-                    service: "app",
-                    account: "token",
-                    accessGroup: nil,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: false,
-                    label: nil,
-                    comment: nil
-                )
+                fileprivate static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: "app",
+                        account: "token",
+                        accessGroup: nil,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
@@ -121,15 +123,17 @@ func keychainItemMacroExpandsRequiredProperty() {
                     }
                 }
 
-                fileprivate static let _deviceIDKey = KeychainKey<String>(
-                    service: "app",
-                    account: "device",
-                    accessGroup: nil,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: false,
-                    label: nil,
-                    comment: nil
-                )
+                fileprivate static var _deviceIDKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: "app",
+                        account: "device",
+                        accessGroup: nil,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
 
                 func setDeviceID(_ newValue: String) async throws {
                     try await Keychain.shared.upsert(newValue, for: Self._deviceIDKey)
@@ -151,13 +155,11 @@ func keychainScopeMacroExpandsDeleteAll() {
         expandedSource: """
             struct AuthKeys {
 
-                static let shared = Self()
-
                 fileprivate static let _keychainScopeService = "app"
 
-                fileprivate static let _keychainScopeAccessGroup = nil
+                fileprivate static let _keychainScopeAccessGroup: String? = nil
 
-                func deleteAll() async throws {
+                static func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
                         service: Self._keychainScopeService,
                         accessGroup: Self._keychainScopeAccessGroup
@@ -186,15 +188,17 @@ func keychainItemMacroDiagnosesEmptyService() {
                     }
                 }
 
-                fileprivate static let _authTokenKey = KeychainKey<String>(
-                    service: "",
-                    account: "token",
-                    accessGroup: nil,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: false,
-                    label: nil,
-                    comment: nil
-                )
+                fileprivate static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: "",
+                        account: "token",
+                        accessGroup: nil,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
@@ -234,15 +238,17 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
                     }
                 }
 
-                fileprivate static let _authTokenKey = KeychainKey<String>(
-                    service: Self._keychainScopeService,
-                    account: "token",
-                    accessGroup: Self._keychainScopeAccessGroup,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: false,
-                    label: nil,
-                    comment: nil
-                )
+                fileprivate static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: Self._keychainScopeService,
+                        account: "token",
+                        accessGroup: Self._keychainScopeAccessGroup,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
@@ -252,13 +258,11 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
                     }
                 }
 
-                static let shared = Self()
-
                 fileprivate static let _keychainScopeService = "app"
 
-                fileprivate static let _keychainScopeAccessGroup = "group.shared"
+                fileprivate static let _keychainScopeAccessGroup: String? = "group.shared"
 
-                func deleteAll() async throws {
+                static func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
                         service: Self._keychainScopeService,
                         accessGroup: Self._keychainScopeAccessGroup
@@ -287,15 +291,17 @@ func keychainItemMacroDiagnosesMissingServiceOutsideScope() {
                     }
                 }
 
-                fileprivate static let _authTokenKey = KeychainKey<String>(
-                    service: "",
-                    account: "token",
-                    accessGroup: nil,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: false,
-                    label: nil,
-                    comment: nil
-                )
+                fileprivate static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: "",
+                        account: "token",
+                        accessGroup: nil,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
@@ -357,15 +363,17 @@ func keychainItemMacroDiagnosesEmptyAccount() {
                     }
                 }
 
-                fileprivate static let _authTokenKey = KeychainKey<String>(
-                    service: "app",
-                    account: "",
-                    accessGroup: nil,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: false,
-                    label: nil,
-                    comment: nil
-                )
+                fileprivate static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: "app",
+                        account: "",
+                        accessGroup: nil,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
@@ -435,15 +443,17 @@ func keychainItemMacroExpandsScopedClassProperty() {
                     }
                 }
 
-                fileprivate static let _authTokenKey = KeychainKey<String>(
-                    service: Self._keychainScopeService,
-                    account: "token",
-                    accessGroup: Self._keychainScopeAccessGroup,
-                    accessibility: .whenUnlocked,
-                    isSynchronizable: true,
-                    label: "Auth token",
-                    comment: "Stored token"
-                )
+                fileprivate static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: Self._keychainScopeService,
+                        account: "token",
+                        accessGroup: Self._keychainScopeAccessGroup,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: true,
+                        label: "Auth token",
+                        comment: "Stored token"
+                    )
+                }
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
@@ -453,13 +463,11 @@ func keychainItemMacroExpandsScopedClassProperty() {
                     }
                 }
 
-                static let shared = Self()
-
                 fileprivate static let _keychainScopeService = "app"
 
-                fileprivate static let _keychainScopeAccessGroup = nil
+                fileprivate static let _keychainScopeAccessGroup: String? = nil
 
-                func deleteAll() async throws {
+                static func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
                         service: Self._keychainScopeService,
                         accessGroup: Self._keychainScopeAccessGroup
