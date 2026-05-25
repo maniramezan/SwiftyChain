@@ -117,14 +117,15 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
             }
         }
         nonmutating set {
-            do {
+            let result = Result<Void, any Error> {
                 if let newValue {
+                    SwiftyChainLoggers.storage.debug(
+                        "KeychainStorage save started for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                    )
+                    let data = try newValue.keychainData()
                     do {
-                        SwiftyChainLoggers.storage.debug(
-                            "KeychainStorage save started for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                        )
                         try backend.save(
-                            try newValue.keychainData(),
+                            data,
                             service: key.service,
                             account: key.account,
                             accessGroup: key.accessGroup,
@@ -138,7 +139,7 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                             "KeychainStorage save found duplicate item; updating instead for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
                         )
                         try backend.update(
-                            try newValue.keychainData(),
+                            data,
                             service: key.service,
                             account: key.account,
                             accessGroup: key.accessGroup,
@@ -159,13 +160,16 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
                         isSynchronizable: key.isSynchronizable
                     )
                 }
+            }
+            switch result {
+            case .success:
                 errorBox.value = nil
-            } catch let error as KeychainError {
+            case .failure(let error as KeychainError):
                 SwiftyChainLoggers.storage.error(
                     "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
                 )
                 errorBox.value = error
-            } catch {
+            case .failure:
                 SwiftyChainLoggers.storage.error(
                     "KeychainStorage write failed with unexpected error for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
                 )
