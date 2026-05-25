@@ -51,7 +51,7 @@
             - `accessGroup` for app and extension sharing.
             - `accessibility` to control when the value is readable.
             - `isSynchronizable` to opt into iCloud Keychain sync.
-            - ``DefaultedKeychainStorage`` when the property should fall back to a non-optional value.
+            - `@KeychainItem` (macros trait) when the property should be non-optional.
         }
 
         @Steps {

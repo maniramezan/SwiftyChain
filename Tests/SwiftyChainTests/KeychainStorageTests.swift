@@ -31,53 +31,6 @@ func keychainStorageReportsErrorsOnProjectedValue() throws {
 }
 
 @Test
-func keychainStorageReturnsDefaultWhenMissing() throws {
-    let backend = InMemoryKeychainBackend()
-    let storage = DefaultedKeychainStorage<String>(
-        "missing",
-        service: "tests",
-        backend: backend,
-        defaultValue: "fallback"
-    )
-
-    #expect(storage.wrappedValue == "fallback")
-    #expect(storage.projectedValue == nil)
-}
-
-@Test
-func defaultedKeychainStorageRoundTripsViaPropertyWrapper() throws {
-    let backend = InMemoryKeychainBackend()
-    let storage = DefaultedKeychainStorage<String>(
-        "token",
-        service: "tests",
-        backend: backend,
-        defaultValue: "fallback"
-    )
-
-    #expect(storage.wrappedValue == "fallback")
-
-    storage.wrappedValue = "abc"
-    #expect(storage.wrappedValue == "abc")
-    #expect(storage.projectedValue == nil)
-}
-
-@Test
-func defaultedKeychainStorageReportsErrorsOnProjectedValue() throws {
-    let backend = FailingBackend()
-    let storage = DefaultedKeychainStorage<String>(
-        "token",
-        service: "tests",
-        backend: backend,
-        defaultValue: "fallback"
-    )
-
-    #expect(storage.wrappedValue == "fallback")
-
-    storage.wrappedValue = "anything"
-    #expect(storage.projectedValue == .operationFailed(-1))
-}
-
-@Test
 func keychainStorageWorksOnLetValue() throws {
     let backend = InMemoryKeychainBackend()
     let storage = KeychainStorage<String>("token", service: "tests", backend: backend)
@@ -125,19 +78,6 @@ func keychainStorageClearsProjectedErrorAfterSuccessfulRead() throws {
 
     #expect(storage.wrappedValue == "restored")
     #expect(storage.projectedValue == nil)
-}
-
-@Test
-func defaultedKeychainStorageReturnsFallbackForUnexpectedReadError() throws {
-    let storage = DefaultedKeychainStorage<String>(
-        "token",
-        service: "tests",
-        backend: ThrowingUnexpectedErrorBackend(),
-        defaultValue: "fallback"
-    )
-
-    #expect(storage.wrappedValue == "fallback")
-    #expect(storage.projectedValue == .unexpectedData)
 }
 
 private struct FailingBackend: KeychainBackend {

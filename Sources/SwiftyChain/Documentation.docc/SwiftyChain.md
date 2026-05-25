@@ -68,7 +68,6 @@ Enable traits by passing them to the product dependency:
 ### Property Wrapper
 
 - ``KeychainStorage``
-- ``DefaultedKeychainStorage``
 - <doc:SwiftyChainKeychainStorage>
 
 ### Test Support

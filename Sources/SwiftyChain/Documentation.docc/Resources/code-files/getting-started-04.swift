@@ -2,18 +2,21 @@ import OSLog
 import SwiftyChain
 
 struct Settings {
-    @DefaultedKeychainStorage("api-token", service: "com.example.myapp", defaultValue: "")
-    var token: String
+    @KeychainStorage("api-token", service: "com.example.myapp")
+    var token: String?
 }
 
-var settings = Settings()
+let settings = Settings()
 let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
 
 // Write
 settings.token = "sk-new-token"
 
 // Read
-logger.debug("Token is configured: \(!settings.token.isEmpty, privacy: .public)")
+logger.debug("Token is configured: \(settings.token != nil, privacy: .public)")
+
+// Delete
+settings.token = nil
 
 // Check for errors via the projected value
 if let error = settings.$token {

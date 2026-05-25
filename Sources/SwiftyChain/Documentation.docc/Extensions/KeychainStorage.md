@@ -55,21 +55,21 @@ struct SessionStore {
 }
 ```
 
-### Provide a Default Value
+### Non-Optional Access
 
-Use ``SwiftyChain/DefaultedKeychainStorage`` when the property should always
-read as a concrete value instead of an optional:
+When the property should always have a concrete value, use `@KeychainItem`
+(requires the `macros` trait). The macro inspects the declared type and
+generates a non-throwing load that returns the value directly:
 
 ```swift
-struct Preferences {
-    @DefaultedKeychainStorage(
-        "has-onboarded",
-        service: "com.example.myapp",
-        defaultValue: false
-    )
+@KeychainScope(service: "com.example.myapp")
+class Preferences {
+    @KeychainItem("has-onboarded")
     var hasOnboarded: Bool
 }
 ```
+
+See <doc:UsingMacros> for full details.
 
 ### Share with an App Group
 
@@ -122,4 +122,4 @@ struct SyncedSecrets {
 
 ### Related
 
-- ``DefaultedKeychainStorage``
+- <doc:UsingMacros>

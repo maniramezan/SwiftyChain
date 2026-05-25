@@ -28,20 +28,3 @@ func consumerCanUseInMemoryBackendWithPropertyWrapper() throws {
     #expect(storage.projectedValue == nil)
 }
 
-@Test
-func consumerCanUseDefaultedPropertyWrapper() throws {
-    let backend = InMemoryKeychainBackend()
-    let storage = DefaultedKeychainStorage<String>(
-        "token",
-        service: "consumer.tests",
-        backend: backend,
-        defaultValue: "fallback"
-    )
-
-    #expect(storage.wrappedValue == "fallback")
-
-    storage.wrappedValue = "wrapped"
-
-    #expect(storage.wrappedValue == "wrapped")
-    #expect(storage.projectedValue == nil)
-}
