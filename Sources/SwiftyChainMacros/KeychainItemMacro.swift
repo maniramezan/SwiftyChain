@@ -93,7 +93,7 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
             // `Self._keychainScopeAccessGroup` are legal in both structs and classes.
             // Swift only restricts covariant `Self` in stored-property initialisers.
             """
-            fileprivate static var _\(raw: name)Key: KeychainKey<\(raw: valueType)> {
+            private static var _\(raw: name)Key: KeychainKey<\(raw: valueType)> {
                 KeychainKey<\(raw: valueType)>(
                     service: \(raw: service),
                     account: \(raw: account),

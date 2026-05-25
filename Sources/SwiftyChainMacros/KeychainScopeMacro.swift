@@ -19,11 +19,11 @@ public struct KeychainScopeMacro: MemberMacro {
 
         return [
             """
-            fileprivate static let _keychainScopeService = \(raw: arguments.expressionText(named: "service", default: "\"\""))
+            private static let _keychainScopeService = \(raw: arguments.expressionText(named: "service", default: "\"\""))
             """,
             // String? annotation is required: bare `nil` has no type context and won't compile.
             """
-            fileprivate static let _keychainScopeAccessGroup: String? = \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
+            private static let _keychainScopeAccessGroup: String? = \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
             """,
             """
             static func deleteAll() async throws {

@@ -81,7 +81,7 @@ func keychainItemMacroExpandsOptionalProperty() {
                     }
                 }
 
-                fileprivate static var _authTokenKey: KeychainKey<String> {
+                private static var _authTokenKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: "app",
                         account: "token",
@@ -123,7 +123,7 @@ func keychainItemMacroExpandsRequiredProperty() {
                     }
                 }
 
-                fileprivate static var _deviceIDKey: KeychainKey<String> {
+                private static var _deviceIDKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: "app",
                         account: "device",
@@ -155,9 +155,9 @@ func keychainScopeMacroExpandsDeleteAll() {
         expandedSource: """
             struct AuthKeys {
 
-                fileprivate static let _keychainScopeService = "app"
+                private static let _keychainScopeService = "app"
 
-                fileprivate static let _keychainScopeAccessGroup: String? = nil
+                private static let _keychainScopeAccessGroup: String? = nil
 
                 static func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
@@ -188,7 +188,7 @@ func keychainItemMacroDiagnosesEmptyService() {
                     }
                 }
 
-                fileprivate static var _authTokenKey: KeychainKey<String> {
+                private static var _authTokenKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: "",
                         account: "token",
@@ -238,7 +238,7 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
                     }
                 }
 
-                fileprivate static var _authTokenKey: KeychainKey<String> {
+                private static var _authTokenKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: Self._keychainScopeService,
                         account: "token",
@@ -258,9 +258,9 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
                     }
                 }
 
-                fileprivate static let _keychainScopeService = "app"
+                private static let _keychainScopeService = "app"
 
-                fileprivate static let _keychainScopeAccessGroup: String? = "group.shared"
+                private static let _keychainScopeAccessGroup: String? = "group.shared"
 
                 static func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
@@ -291,7 +291,7 @@ func keychainItemMacroDiagnosesMissingServiceOutsideScope() {
                     }
                 }
 
-                fileprivate static var _authTokenKey: KeychainKey<String> {
+                private static var _authTokenKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: "",
                         account: "token",
@@ -363,7 +363,7 @@ func keychainItemMacroDiagnosesEmptyAccount() {
                     }
                 }
 
-                fileprivate static var _authTokenKey: KeychainKey<String> {
+                private static var _authTokenKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: "app",
                         account: "",
@@ -443,7 +443,7 @@ func keychainItemMacroExpandsScopedClassProperty() {
                     }
                 }
 
-                fileprivate static var _authTokenKey: KeychainKey<String> {
+                private static var _authTokenKey: KeychainKey<String> {
                     KeychainKey<String>(
                         service: Self._keychainScopeService,
                         account: "token",
@@ -463,9 +463,9 @@ func keychainItemMacroExpandsScopedClassProperty() {
                     }
                 }
 
-                fileprivate static let _keychainScopeService = "app"
+                private static let _keychainScopeService = "app"
 
-                fileprivate static let _keychainScopeAccessGroup: String? = nil
+                private static let _keychainScopeAccessGroup: String? = nil
 
                 static func deleteAll() async throws {
                     try await Keychain.shared.deleteAll(
