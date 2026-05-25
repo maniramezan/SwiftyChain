@@ -48,7 +48,7 @@ Use the optional arguments only when needed:
 
 ## Traits
 
-Core keychain support is dependency-free beyond `Security.framework`. Optional traits are declared for macro, cryptography, and observation features as the implementation matures.
+The Swift macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are included by default. Two optional traits gate specialised features:
 
 ## Testing
 
@@ -91,7 +91,7 @@ xcrun swift-format lint --recursive --strict Sources Tests Package.swift
 Optional features are guarded by traits. Enable them explicitly when building or testing:
 
 ```bash
-xcrun swift test --traits "macros,observation,cryptography"
+xcrun swift test --traits "observation,cryptography"
 ```
 
 Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain.

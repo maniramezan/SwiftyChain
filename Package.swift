@@ -18,7 +18,6 @@ let package = Package(
     ],
     traits: [
         .default(enabledTraits: []),
-        "macros",
         "cryptography",
         "observation",
     ],
@@ -30,10 +29,9 @@ let package = Package(
         .target(
             name: "SwiftyChain",
             dependencies: [
-                .target(name: "SwiftyChainMacros", condition: .when(traits: ["macros"]))
+                .target(name: "SwiftyChainMacros")
             ],
             swiftSettings: [
-                .define("Macros", .when(traits: ["macros"])),
                 .define("Cryptography", .when(traits: ["cryptography"])),
                 .define("Observation", .when(traits: ["observation"])),
             ]
@@ -60,7 +58,6 @@ let package = Package(
             name: "SwiftyChainTests",
             dependencies: ["SwiftyChain", "SwiftyChainTesting"],
             swiftSettings: [
-                .define("Macros", .when(traits: ["macros"])),
                 .define("Cryptography", .when(traits: ["cryptography"])),
                 .define("Observation", .when(traits: ["observation"])),
             ]

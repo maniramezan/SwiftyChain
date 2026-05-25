@@ -27,4 +27,3 @@ func consumerCanUseInMemoryBackendWithPropertyWrapper() throws {
     #expect(storage.wrappedValue == "wrapped")
     #expect(storage.projectedValue == nil)
 }
-

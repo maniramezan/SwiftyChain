@@ -1,7 +1,7 @@
 import SwiftSyntax
 import SwiftSyntaxMacros
 
-public struct KeychainScopeMacro: MemberMacro, PeerMacro {
+public struct KeychainScopeMacro: MemberMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
@@ -38,11 +38,4 @@ public struct KeychainScopeMacro: MemberMacro, PeerMacro {
         ]
     }
 
-    public static func expansion(
-        of node: AttributeSyntax,
-        providingPeersOf declaration: some DeclSyntaxProtocol,
-        in context: some MacroExpansionContext
-    ) throws -> [DeclSyntax] {
-        []
-    }
 }

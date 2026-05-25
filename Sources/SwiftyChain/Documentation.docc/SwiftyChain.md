@@ -33,11 +33,10 @@ targets: [
 
 ### Optional Traits
 
-SwiftyChain ships several opt-in traits that gate additional features at compile time. Enable only what you need:
+SwiftyChain ships two opt-in traits that gate additional features at compile time. The Swift macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are included by default. Enable only what you need:
 
 | Trait | What it adds |
 |---|---|
-| `macros` | `@KeychainItem`, `@KeychainScope`, and `#keychainKey(...)` compile-time macros |
 | `observation` | ``Keychain/observeKeychainChanges(service:accessGroup:)`` and ``KeychainChangeEvent`` |
 | `cryptography` | ``Keychain/saveCryptoKey(_:for:)``, ``Keychain/loadCryptoKey(keyRef:)``, ``Keychain/deleteCryptoKey(keyRef:)``, ``CryptoKeyReference``, ``StoredSecKey`` |
 
@@ -47,7 +46,7 @@ Enable traits by passing them to the product dependency:
 .product(
     name: "SwiftyChain",
     package: "SwiftyChain",
-    traits: ["macros", "observation", "cryptography"]
+    traits: ["observation", "cryptography"]
 )
 ```
 

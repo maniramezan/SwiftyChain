@@ -57,9 +57,9 @@ struct SessionStore {
 
 ### Non-Optional Access
 
-When the property should always have a concrete value, use `@KeychainItem`
-(requires the `macros` trait). The macro inspects the declared type and
-generates a non-throwing load that returns the value directly:
+When the property should always have a concrete value, use `@KeychainItem`.
+The macro inspects the declared type and generates a non-throwing load that
+returns the value directly:
 
 ```swift
 @KeychainScope(service: "com.example.myapp")
