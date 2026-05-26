@@ -14,7 +14,7 @@ hitting the real keychain.
 let token = try await Keychain.shared.load(key: myKey)
 
 // Tests
-let keychain: any KeychainProtocol = InMemoryKeychain()
+let keychain: any KeychainProtocol = InMemoryKeychain() // from SwiftyChainTesting
 ```
 
 ### Choosing the Right Write Method

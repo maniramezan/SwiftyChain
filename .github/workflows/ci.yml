@@ -143,3 +143,19 @@ jobs:
             --target SwiftyChain \
             --warnings-as-errors \
             --disable-indexing
+
+      - name: Build SwiftyChainTesting documentation (default traits)
+        run: |
+          xcrun swift package generate-documentation \
+            --target SwiftyChainTesting \
+            --warnings-as-errors \
+            --disable-indexing
+
+      - name: Build SwiftyChainTesting documentation (all traits)
+        run: |
+          xcrun swift package \
+            --traits "${TRAITS}" \
+            generate-documentation \
+            --target SwiftyChainTesting \
+            --warnings-as-errors \
+            --disable-indexing

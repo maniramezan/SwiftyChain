@@ -1,6 +1,33 @@
 import Foundation
 import SwiftyChain
 
+/// An in-memory implementation of `KeychainBackend` for use in tests.
+///
+/// Use `InMemoryKeychainBackend` when initialising `KeychainStorage` directly in
+/// unit tests. Items are stored in a dictionary and never touch the system keychain,
+/// so tests run fast and require no entitlements.
+///
+/// ```swift
+/// import SwiftyChain
+/// import SwiftyChainTesting
+///
+/// let backend = InMemoryKeychainBackend()
+/// let storage = KeychainStorage<String>(
+///     "auth-token",
+///     service: "com.example.app",
+///     backend: backend
+/// )
+///
+/// storage.wrappedValue = "secret"
+/// assert(storage.wrappedValue == "secret")
+/// ```
+///
+/// Each instance starts empty. Create a fresh one per test to guarantee isolation.
+///
+/// ## Thread safety
+///
+/// `InMemoryKeychainBackend` is `Sendable` and uses `NSLock` to serialize
+/// concurrent reads and writes, so it is safe to share across threads or tasks.
 public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable {
     private struct StorageKey: Hashable {
         let service: String
@@ -19,8 +46,12 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
     private let lock = NSLock()
     private var items: [StorageKey: StorageValue] = [:]
 
+    /// Creates a new, empty in-memory keychain backend.
     public init() {}
 
+    /// Saves raw data for a new keychain item.
+    ///
+    /// - Throws: `KeychainError.duplicateItem` if an item with the same identity already exists.
     public func save(
         _ data: Data,
         service: String,
@@ -50,6 +81,9 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
         }
     }
 
+    /// Loads the raw data for an existing keychain item.
+    ///
+    /// - Throws: `KeychainError.itemNotFound` if no matching item exists.
     public func load(
         service: String,
         account: String,
@@ -70,6 +104,9 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
         }
     }
 
+    /// Replaces the raw data for an existing keychain item.
+    ///
+    /// - Throws: `KeychainError.itemNotFound` if no matching item exists.
     public func update(
         _ data: Data,
         service: String,
@@ -99,6 +136,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
         }
     }
 
+    /// Removes a keychain item. This is a no-op if the item does not exist.
     public func delete(
         service: String,
         account: String,
