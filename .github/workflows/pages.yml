@@ -50,13 +50,18 @@ jobs:
         run: |
           xcrun swift package \
             --traits "cryptography,observation" \
-            --allow-writing-to-directory ./docs \
+            --allow-writing-to-directory ./docs-testing \
             generate-documentation \
             --target SwiftyChainTesting \
-            --output-path ./docs \
+            --output-path ./docs-testing \
             --warnings-as-errors \
             --transform-for-static-hosting \
             --hosting-base-path "${{ steps.pages.outputs.base_path }}"
+
+      - name: Merge SwiftyChainTesting docs into main site
+        run: |
+          cp -r ./docs-testing/documentation/swiftychaintesting ./docs/documentation/
+          cp -r ./docs-testing/data/. ./docs/data/
 
       - name: Add root redirect to documentation
         run: |
