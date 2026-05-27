@@ -69,11 +69,9 @@ Enable traits by passing them to the product dependency:
 - ``KeychainStorage``
 - <doc:SwiftyChainKeychainStorage>
 
-### Test Support
+### Macros
 
-- ``KeychainProtocol``
-- ``KeychainBackend``
-- <doc:Testing>
+- <doc:UsingMacros>
 
 ### Internet Passwords
 
@@ -91,20 +89,25 @@ Enable traits by passing them to the product dependency:
 - ``KeychainDeleteQuery``
 - ``KeychainItemClass``
 
-### Errors
-
-- ``KeychainError``
-
 ### Observation
 
 - ``KeychainChangeEvent``
-
-### Macros
-
-- <doc:UsingMacros>
 
 ### Cryptographic Keys
 
 - ``CryptoKeyReference``
 - ``StoredSecKey``
 - ``CryptoKeyStorable``
+
+### Extensibility
+
+- ``KeychainProtocol``
+- ``KeychainBackend``
+
+### Test Support
+
+- <doc:Testing>
+
+### Errors
+
+- ``KeychainError``
