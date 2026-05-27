@@ -25,7 +25,7 @@ do {
 } catch KeychainError.itemNotFound {
     // First launch — nothing stored yet; redirect to login
 } catch KeychainError.authenticationFailed {
-    // User declined the biometric prompt — ask again or fall back
+    // Authentication failed — check key accessibility or prompt the user again
 } catch KeychainError.accessGroupDenied {
     // Missing entitlements for the access group in the key
 } catch {

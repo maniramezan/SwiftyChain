@@ -52,9 +52,9 @@ When the `cryptography` trait is enabled, `InMemoryKeychain` also implements the
 crypto-key CRUD methods:
 
 ```swift
-let keyRef = CryptoKeyReference<StoredSecKey>(label: "signing-key", tag: Data())
-let secKey: StoredSecKey = /* generate */
-try await keychain.saveCryptoKey(secKey, for: keyRef)
+let keyRef = CryptoKeyReference<StoredSecKey>(tag: "com.example.signing-key")
+let storedKey = StoredSecKey(/* your generated SecKey */)
+try await keychain.saveCryptoKey(storedKey, for: keyRef)
 let loaded = try await keychain.loadCryptoKey(keyRef: keyRef)
 ```
 

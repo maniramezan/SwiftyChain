@@ -23,7 +23,12 @@ final class Secrets {
     var refreshToken: String?
 }
 
-try await Secrets.deleteAll()
+let secrets = Secrets()
+try await secrets.setApiToken("abc123")   // saves to keychain
+let token = try await secrets.apiToken    // loads; nil if absent
+try await secrets.setApiToken(nil)        // deletes
+
+try await Secrets.deleteAll()             // bulk-deletes all items for the service
 ```
 
 The scope macro adds a `static func deleteAll()` to the annotated type.
@@ -33,20 +38,20 @@ the scope injects it automatically into every generated ``KeychainKey``.
 ### @KeychainItem
 
 Attach to a stored property to generate a backing ``KeychainKey``, an
-`async throws` getter, and a `setXyz(_:)` async setter:
+`async throws` computed getter, and a `setXyz(_:)` async peer method:
 
 ```swift
 @KeychainItem(
-    "biometric-secret",
+    "device-secret",
     service: "com.example.app",
     accessibility: .whenPasscodeSetThisDeviceOnly
 )
-var biometricSecret: Data?
+var deviceSecret: Data?
 ```
 
-`service:` and `account:` must be non-empty string literals; the macro
-emits a compile-time diagnostic if either is empty. Optional properties
-generate a setter that deletes when assigned `nil`; non-optional
+`service:` and the account (first argument) must be non-empty string
+literals; the macro emits a compile-time diagnostic if either is empty.
+Passing `nil` to the generated setter deletes the item; non-optional
 properties always upsert.
 
 ### #keychainKey

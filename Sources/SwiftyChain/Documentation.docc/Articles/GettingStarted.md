@@ -75,7 +75,7 @@ do {
 } catch KeychainError.itemNotFound {
     // No token stored yet — redirect to login
 } catch KeychainError.authenticationFailed {
-    // User declined biometric prompt — ask again or fall back
+    // Authentication failed — check key accessibility or prompt the user again
 } catch {
     // Unexpected failure
     print("Keychain error:", error)
