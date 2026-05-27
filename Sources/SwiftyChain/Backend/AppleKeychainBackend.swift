@@ -379,12 +379,12 @@ extension AuthenticationType {
             let status = SecItemCopyMatching(attributes as CFDictionary, &result)
             try mapStatus(status)
 
-            guard let result, CFGetTypeID(result) == SecKeyGetTypeID(),
-                let secKey = result as? SecKey
-            else {
+            guard let result, CFGetTypeID(result) == SecKeyGetTypeID() else {
                 throw KeychainError.unexpectedData
             }
-            return secKey
+            // Safe: type ID verified above; CFTypeRef-to-SecKey cast always
+            // succeeds for CF types so `as?` is rejected by the compiler.
+            return result as! SecKey
         }
 
         func deleteCryptoKey(query: CryptoKeyQuery) throws {
