@@ -62,3 +62,39 @@ let key: KeychainKey<String> = #keychainKey(
     account: "token"
 )
 ```
+
+## Testing Macro-Generated Code
+
+`@KeychainItem` and `@KeychainScope` generate accessors that are hardcoded
+to `Keychain.shared`. There is no injection point, so you cannot substitute
+an ``SwiftyChainTesting/InMemoryKeychain`` at the macro level.
+
+For code that needs unit tests, use the protocol-based API instead:
+
+```swift
+// Testable: depends on KeychainProtocol, injectable in tests.
+actor Credentials {
+    private let keychain: any KeychainProtocol
+    private let tokenKey = KeychainKey<String>(
+        service: "com.example.app",
+        account: "api-token"
+    )
+
+    init(keychain: any KeychainProtocol = Keychain.shared) {
+        self.keychain = keychain
+    }
+
+    func token() async throws -> String? {
+        try await keychain.loadIfPresent(key: tokenKey)
+    }
+}
+```
+
+Reserve `@KeychainItem` and `@KeychainScope` for types where you either:
+
+- Test only the surrounding logic (not the keychain read/write itself), or
+- Cover the keychain interaction with a narrow integration test against the
+  real keychain on device.
+
+See <doc:Testing> for guidance on when to use the real keychain versus
+in-memory test doubles.

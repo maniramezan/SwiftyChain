@@ -13,4 +13,9 @@
         @Image(source: "chapter-getting-started.png", alt: "Keychain storage tutorial")
         @TutorialReference(tutorial: "doc:SwiftyChainKeychainStorage")
     }
+
+    @Chapter(name: "Testing") {
+        @Image(source: "chapter-getting-started.png", alt: "Testing keychain-dependent code")
+        @TutorialReference(tutorial: "doc:SwiftyChainTesting")
+    }
 }

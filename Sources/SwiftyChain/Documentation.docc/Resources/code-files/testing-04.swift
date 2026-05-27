@@ -1,0 +1,19 @@
+import SwiftyChain
+import SwiftyChainTesting
+import Testing
+
+@Test func savesAndLoadsToken() async throws {
+    let keychain = InMemoryKeychain()
+    let store = TokenStore(keychain: keychain)
+
+    try await store.save(token: "secret")
+
+    #expect(try await store.load() == "secret")
+}
+
+@Test func loadReturnsNilBeforeFirstSave() async throws {
+    let keychain = InMemoryKeychain()
+    let store = TokenStore(keychain: keychain)
+
+    #expect(try await store.load() == nil)
+}

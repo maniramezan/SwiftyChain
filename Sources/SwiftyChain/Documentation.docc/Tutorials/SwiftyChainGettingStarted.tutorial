@@ -71,4 +71,25 @@
             }
         }
     }
+
+    @Section(title: "Make Your Code Testable") {
+        @ContentAndMedia {
+            Code that calls `Keychain.shared` directly is hard to test — it
+            hits the real system keychain and requires entitlements. Depend on
+            ``KeychainProtocol`` instead so tests can inject
+            ``SwiftyChainTesting/InMemoryKeychain`` without touching the
+            system keychain.
+        }
+
+        @Steps {
+            @Step {
+                Refactor your functions to accept `any KeychainProtocol`.
+                Production callers pass `Keychain.shared`; test code passes
+                `InMemoryKeychain()`. No entitlements, no leftover keychain
+                items after the test run.
+
+                @Code(name: "TokenOperations.swift", file: "getting-started-06.swift")
+            }
+        }
+    }
 }

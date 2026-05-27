@@ -1,0 +1,86 @@
+@Tutorial(time: 12) {
+    @Intro(title: "Testing Keychain-Dependent Code") {
+        Learn how to write fast, isolated tests for features that use
+        SwiftyChain — no entitlements required, no items left behind in
+        the system keychain.
+    }
+
+    @Section(title: "Add the Testing Product") {
+        @ContentAndMedia {
+            SwiftyChainTesting ships two in-memory test doubles:
+            ``SwiftyChainTesting/InMemoryKeychain`` and
+            ``SwiftyChainTesting/InMemoryKeychainBackend``. Add the product
+            to your test target only — never to a shipping target.
+        }
+
+        @Steps {
+            @Step {
+                Add `SwiftyChainTesting` as a dependency of your test target
+                in `Package.swift`.
+
+                @Code(name: "Package.swift", file: "testing-01.swift")
+            }
+        }
+    }
+
+    @Section(title: "Test Protocol-Based Feature Code") {
+        @ContentAndMedia {
+            The key to fast, isolated keychain tests is depending on
+            ``KeychainProtocol`` instead of the concrete ``Keychain`` actor.
+            Tests can then supply ``SwiftyChainTesting/InMemoryKeychain``
+            without touching the system keychain or requiring entitlements.
+        }
+
+        @Steps {
+            @Step {
+                Write feature code against `KeychainProtocol`. Give the
+                `init` a default of `Keychain.shared` so production call
+                sites require no changes.
+
+                @Code(name: "TokenStore.swift", file: "testing-02.swift")
+            }
+
+            @Step {
+                In your test file, create an `InMemoryKeychain` and pass it
+                to `TokenStore`. Write your first test: save a token, then
+                load it back.
+
+                @Code(name: "TokenStoreTests.swift", file: "testing-03.swift")
+            }
+
+            @Step {
+                Add a second test for the empty-state case. Create a fresh
+                `InMemoryKeychain` per test so tests start from a clean
+                state even when run in parallel.
+
+                @Code(name: "TokenStoreTests.swift", file: "testing-04.swift")
+            }
+        }
+    }
+
+    @Section(title: "Test @KeychainStorage Code") {
+        @ContentAndMedia {
+            When your code uses `@KeychainStorage` or `KeychainStorage`
+            directly, pass an ``SwiftyChainTesting/InMemoryKeychainBackend``
+            through the `backend:` initializer parameter. The wrapper
+            behaves identically to production but reads and writes to memory.
+        }
+
+        @Steps {
+            @Step {
+                Create an `InMemoryKeychainBackend`, supply it to
+                `KeychainStorage`, and exercise the wrapped value.
+
+                @Code(name: "KeychainStorageTests.swift", file: "testing-05.swift")
+            }
+
+            @Step {
+                Add a second test to verify the storage starts empty. A
+                separate `InMemoryKeychainBackend` per test guarantees full
+                isolation.
+
+                @Code(name: "KeychainStorageTests.swift", file: "testing-06.swift")
+            }
+        }
+    }
+}
