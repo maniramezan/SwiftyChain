@@ -83,4 +83,44 @@
             }
         }
     }
+
+    @Section(title: "Test @KeychainScope Code") {
+        @ContentAndMedia {
+            `@KeychainScope` accepts an optional `keychain:` argument. Pass
+            any ``KeychainProtocol`` expression there and every `@KeychainItem`
+            accessor inside the scope uses it instead of `Keychain.shared`.
+
+            The recommended pattern is a lazy static on a `Dependencies` type
+            that checks a launch-time environment variable. UI tests set the
+            variable before `app.launch()`; the real keychain is never touched.
+        }
+
+        @Steps {
+            @Step {
+                Create an `AppDependencies` type with a lazy static `keychain`
+                property. Inside a `#if DEBUG` guard, return an
+                `InMemoryKeychain` when the `USE_MOCK_KEYCHAIN` environment
+                variable is set; otherwise return `Keychain.shared`.
+
+                @Code(name: "AppDependencies.swift", file: "testing-07.swift")
+            }
+
+            @Step {
+                Apply `@KeychainScope` to your type and pass
+                `keychain: AppDependencies.keychain`. Every `@KeychainItem`
+                accessor now routes through that expression at runtime.
+
+                @Code(name: "AppDependencies.swift", file: "testing-08.swift")
+            }
+
+            @Step {
+                In your UI test, set `launchEnvironment["USE_MOCK_KEYCHAIN"]`
+                before calling `app.launch()`. The app process reads the
+                variable and returns an `InMemoryKeychain` — no real keychain
+                access, no entitlements required.
+
+                @Code(name: "AuthUITests.swift", file: "testing-09.swift")
+            }
+        }
+    }
 }

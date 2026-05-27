@@ -19,10 +19,11 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
 
         let name = identifier.identifier.text
         let type = typeAnnotation.type.trimmedDescription
+        let keychainExpr = enclosingScope(in: context) != nil ? "Self._keychainScopeInstance" : "Keychain.shared"
         let loadCall =
             isOptional(type)
-            ? "try await Keychain.shared.loadIfPresent(key: Self._\(name)Key)"
-            : "try await Keychain.shared.load(key: Self._\(name)Key)"
+            ? "try await \(keychainExpr).loadIfPresent(key: Self._\(name)Key)"
+            : "try await \(keychainExpr).load(key: Self._\(name)Key)"
 
         return [
             """
@@ -78,6 +79,7 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
         let type = typeAnnotation.type.trimmedDescription
         let valueType = wrappedValueType(from: type)
         let setterName = "set\(name.prefix(1).uppercased())\(name.dropFirst())"
+        let keychainExpr = scope != nil ? "Self._keychainScopeInstance" : "Keychain.shared"
         let defaultAccessGroup = scope == nil ? "nil" : "Self._keychainScopeAccessGroup"
         let accessGroup =
             arguments?.expressionText(named: "accessGroup", default: defaultAccessGroup)
@@ -105,7 +107,7 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
                 )
             }
             """,
-            setterMethod(name: setterName, type: type, keyName: name),
+            setterMethod(name: setterName, type: type, keyName: name, keychain: keychainExpr),
         ]
     }
 
@@ -171,14 +173,14 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
         return type
     }
 
-    private static func setterMethod(name: String, type: String, keyName: String) -> DeclSyntax {
+    private static func setterMethod(name: String, type: String, keyName: String, keychain: String) -> DeclSyntax {
         if isOptional(type) {
             return """
                 func \(raw: name)(_ newValue: \(raw: type)) async throws {
                     if let newValue {
-                        try await Keychain.shared.upsert(newValue, for: Self._\(raw: keyName)Key)
+                        try await \(raw: keychain).upsert(newValue, for: Self._\(raw: keyName)Key)
                     } else {
-                        try await Keychain.shared.delete(key: Self._\(raw: keyName)Key)
+                        try await \(raw: keychain).delete(key: Self._\(raw: keyName)Key)
                     }
                 }
                 """
@@ -186,7 +188,7 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
 
         return """
             func \(raw: name)(_ newValue: \(raw: type)) async throws {
-                try await Keychain.shared.upsert(newValue, for: Self._\(raw: keyName)Key)
+                try await \(raw: keychain).upsert(newValue, for: Self._\(raw: keyName)Key)
             }
             """
     }

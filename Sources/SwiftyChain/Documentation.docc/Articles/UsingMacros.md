@@ -70,36 +70,56 @@ let key: KeychainKey<String> = #keychainKey(
 
 ## Testing Macro-Generated Code
 
-`@KeychainItem` and `@KeychainScope` generate accessors that are hardcoded
-to `Keychain.shared`. There is no injection point, so you cannot substitute
-an `InMemoryKeychain` at the macro level.
-
-For code that needs unit tests, use the protocol-based API instead:
+Pass a `keychain:` argument to `@KeychainScope` to control which
+``KeychainProtocol`` implementation the generated accessors use. When omitted,
+it defaults to `Keychain.shared`.
 
 ```swift
-// Testable: depends on KeychainProtocol, injectable in tests.
-actor Credentials {
-    private let keychain: any KeychainProtocol
-    private let tokenKey = KeychainKey<String>(
-        service: "com.example.app",
-        account: "api-token"
-    )
-
-    init(keychain: any KeychainProtocol = Keychain.shared) {
-        self.keychain = keychain
-    }
-
-    func token() async throws -> String? {
-        try await keychain.loadIfPresent(key: tokenKey)
-    }
+@KeychainScope(service: "com.example.app", keychain: AppDependencies.keychain)
+final class Secrets {
+    @KeychainItem("api-token")
+    var apiToken: String?
 }
 ```
 
-Reserve `@KeychainItem` and `@KeychainScope` for types where you either:
+Define `AppDependencies.keychain` to switch between the real keychain and
+an `InMemoryKeychain` based on a launch-time signal:
 
-- Test only the surrounding logic (not the keychain read/write itself), or
-- Cover the keychain interaction with a narrow integration test against the
-  real keychain on device.
+```swift
+// AppDependencies.swift — compiled into the app target
+import SwiftyChain
+import SwiftyChainTesting   // only in DEBUG builds
+
+enum AppDependencies {
+    static let keychain: any KeychainProtocol = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["USE_MOCK_KEYCHAIN"] == "1" {
+            return InMemoryKeychain()
+        }
+        #endif
+        return Keychain.shared
+    }()
+}
+```
+
+In UI tests, set the environment variable before launch:
+
+```swift
+func testLoginFlow() {
+    let app = XCUIApplication()
+    app.launchEnvironment["USE_MOCK_KEYCHAIN"] = "1"
+    app.launch()
+    // Secrets now reads and writes to InMemoryKeychain
+}
+```
+
+The `#if DEBUG` guard ensures no `SwiftyChainTesting` code ships in
+Release builds.
+
+> Note: `@KeychainItem` used without an enclosing `@KeychainScope` always
+> falls back to `Keychain.shared`. Add a `@KeychainScope` wrapper to opt in
+> to the injection point. For fine-grained unit-test control, write feature
+> code against ``KeychainProtocol`` directly — see <doc:Testing>.
 
 See <doc:Testing> for guidance on when to use the real keychain versus
 in-memory test doubles.

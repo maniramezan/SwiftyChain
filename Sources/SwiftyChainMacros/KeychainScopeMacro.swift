@@ -17,6 +17,8 @@ public struct KeychainScopeMacro: MemberMacro {
             return []
         }
 
+        let keychainExpression = arguments.expressionText(named: "keychain", default: "Keychain.shared")
+
         return [
             """
             private static let _keychainScopeService = \(raw: arguments.expressionText(named: "service", default: "\"\""))
@@ -26,8 +28,11 @@ public struct KeychainScopeMacro: MemberMacro {
             private static let _keychainScopeAccessGroup: String? = \(raw: arguments.expressionText(named: "accessGroup", default: "nil"))
             """,
             """
+            private static var _keychainScopeInstance: any KeychainProtocol { \(raw: keychainExpression) }
+            """,
+            """
             static func deleteAll() async throws {
-                try await Keychain.shared.deleteAll(
+                try await Self._keychainScopeInstance.deleteAll(
                     service: Self._keychainScopeService,
                     accessGroup: Self._keychainScopeAccessGroup
                 )

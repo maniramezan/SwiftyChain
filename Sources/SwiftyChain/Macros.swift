@@ -62,6 +62,9 @@ public macro KeychainItem(
 /// declared within it inherit the `service` (and optional `accessGroup`) automatically,
 /// so you don't have to repeat those values on every property.
 ///
+/// The scope also synthesizes a `static func deleteAll()` that bulk-deletes every
+/// item stored under the service.
+///
 /// ```swift
 /// @KeychainScope(service: "com.example.app")
 /// class AppSecrets {
@@ -71,9 +74,46 @@ public macro KeychainItem(
 ///     @KeychainItem("refresh-token")
 ///     var refreshToken: String?
 /// }
+///
+/// try await AppSecrets.deleteAll()
 /// ```
+///
+/// ## Injecting a keychain for tests
+///
+/// Pass a `keychain:` expression to replace `Keychain.shared` with any
+/// ``KeychainProtocol`` at runtime. The typical pattern uses a lazy static
+/// that reads a launch-time environment variable:
+///
+/// ```swift
+/// enum AppDependencies {
+///     static let keychain: any KeychainProtocol = {
+///         #if DEBUG
+///         if ProcessInfo.processInfo.environment["USE_MOCK_KEYCHAIN"] == "1" {
+///             return InMemoryKeychain()
+///         }
+///         #endif
+///         return Keychain.shared
+///     }()
+/// }
+///
+/// @KeychainScope(service: "com.example.app", keychain: AppDependencies.keychain)
+/// class AppSecrets {
+///     @KeychainItem("auth-token")
+///     var authToken: String?
+/// }
+/// ```
+///
+/// In UI tests, set the environment variable before launch:
+///
+/// ```swift
+/// app.launchEnvironment["USE_MOCK_KEYCHAIN"] = "1"
+/// app.launch()
+/// ```
+///
+/// See the Testing article for the full pattern, including pre-seeding values.
 @attached(member, names: arbitrary)
 public macro KeychainScope(
     service: String,
-    accessGroup: String? = nil
+    accessGroup: String? = nil,
+    keychain: (any KeychainProtocol)? = nil
 ) = #externalMacro(module: "SwiftyChainMacros", type: "KeychainScopeMacro")

@@ -159,8 +159,66 @@ func keychainScopeMacroExpandsDeleteAll() {
 
                 private static let _keychainScopeAccessGroup: String? = nil
 
+                private static var _keychainScopeInstance: any KeychainProtocol { Keychain.shared }
+
                 static func deleteAll() async throws {
-                    try await Keychain.shared.deleteAll(
+                    try await Self._keychainScopeInstance.deleteAll(
+                        service: Self._keychainScopeService,
+                        accessGroup: Self._keychainScopeAccessGroup
+                    )
+                }
+            }
+            """,
+        macros: testMacros
+    )
+}
+
+@Test
+func keychainScopeMacroUsesCustomKeychain() {
+    assertMacroExpansion(
+        """
+        @KeychainScope(service: "app", keychain: AppDependencies.keychain)
+        struct AuthStore {
+            @KeychainItem("token")
+            var authToken: String?
+        }
+        """,
+        expandedSource: """
+            struct AuthStore {
+                var authToken: String? {
+                    get async throws {
+                        try await Self._keychainScopeInstance.loadIfPresent(key: Self._authTokenKey)
+                    }
+                }
+
+                private static var _authTokenKey: KeychainKey<String> {
+                    KeychainKey<String>(
+                        service: Self._keychainScopeService,
+                        account: "token",
+                        accessGroup: Self._keychainScopeAccessGroup,
+                        accessibility: .whenUnlocked,
+                        isSynchronizable: false,
+                        label: nil,
+                        comment: nil
+                    )
+                }
+
+                func setAuthToken(_ newValue: String?) async throws {
+                    if let newValue {
+                        try await Self._keychainScopeInstance.upsert(newValue, for: Self._authTokenKey)
+                    } else {
+                        try await Self._keychainScopeInstance.delete(key: Self._authTokenKey)
+                    }
+                }
+
+                private static let _keychainScopeService = "app"
+
+                private static let _keychainScopeAccessGroup: String? = nil
+
+                private static var _keychainScopeInstance: any KeychainProtocol { AppDependencies.keychain }
+
+                static func deleteAll() async throws {
+                    try await Self._keychainScopeInstance.deleteAll(
                         service: Self._keychainScopeService,
                         accessGroup: Self._keychainScopeAccessGroup
                     )
@@ -234,7 +292,7 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
             struct AuthStore {
                 var authToken: String? {
                     get async throws {
-                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                        try await Self._keychainScopeInstance.loadIfPresent(key: Self._authTokenKey)
                     }
                 }
 
@@ -252,9 +310,9 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
-                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                        try await Self._keychainScopeInstance.upsert(newValue, for: Self._authTokenKey)
                     } else {
-                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                        try await Self._keychainScopeInstance.delete(key: Self._authTokenKey)
                     }
                 }
 
@@ -262,8 +320,10 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
 
                 private static let _keychainScopeAccessGroup: String? = "group.shared"
 
+                private static var _keychainScopeInstance: any KeychainProtocol { Keychain.shared }
+
                 static func deleteAll() async throws {
-                    try await Keychain.shared.deleteAll(
+                    try await Self._keychainScopeInstance.deleteAll(
                         service: Self._keychainScopeService,
                         accessGroup: Self._keychainScopeAccessGroup
                     )
@@ -439,7 +499,7 @@ func keychainItemMacroExpandsScopedClassProperty() {
             final class AuthStore {
                 var authToken: String? {
                     get async throws {
-                        try await Keychain.shared.loadIfPresent(key: Self._authTokenKey)
+                        try await Self._keychainScopeInstance.loadIfPresent(key: Self._authTokenKey)
                     }
                 }
 
@@ -457,9 +517,9 @@ func keychainItemMacroExpandsScopedClassProperty() {
 
                 func setAuthToken(_ newValue: String?) async throws {
                     if let newValue {
-                        try await Keychain.shared.upsert(newValue, for: Self._authTokenKey)
+                        try await Self._keychainScopeInstance.upsert(newValue, for: Self._authTokenKey)
                     } else {
-                        try await Keychain.shared.delete(key: Self._authTokenKey)
+                        try await Self._keychainScopeInstance.delete(key: Self._authTokenKey)
                     }
                 }
 
@@ -467,8 +527,10 @@ func keychainItemMacroExpandsScopedClassProperty() {
 
                 private static let _keychainScopeAccessGroup: String? = nil
 
+                private static var _keychainScopeInstance: any KeychainProtocol { Keychain.shared }
+
                 static func deleteAll() async throws {
-                    try await Keychain.shared.deleteAll(
+                    try await Self._keychainScopeInstance.deleteAll(
                         service: Self._keychainScopeService,
                         accessGroup: Self._keychainScopeAccessGroup
                     )

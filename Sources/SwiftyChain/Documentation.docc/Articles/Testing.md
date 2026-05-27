@@ -111,6 +111,102 @@ import Testing
 }
 ```
 
+## Test Macro-Based Code
+
+`@KeychainScope` accepts an optional `keychain:` argument. Pass any
+``KeychainProtocol`` expression there — the generated `@KeychainItem`
+accessors and `deleteAll()` will use it instead of `Keychain.shared`.
+
+### UI test pattern — environment variable
+
+Because UI tests run in a separate process, the recommended approach is to
+define a lazy static on a `Dependencies` type that reads a launch-time
+environment variable, then pass it to `@KeychainScope`:
+
+```swift
+// AppDependencies.swift — in the app target
+import SwiftyChain
+import SwiftyChainTesting   // guarded by #if DEBUG
+
+enum AppDependencies {
+    static let keychain: any KeychainProtocol = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["USE_MOCK_KEYCHAIN"] == "1" {
+            return InMemoryKeychain()
+        }
+        #endif
+        return Keychain.shared
+    }()
+}
+
+// Secrets.swift
+@KeychainScope(service: "com.example.app", keychain: AppDependencies.keychain)
+final class Secrets {
+    @KeychainItem("api-token")
+    var apiToken: String?
+
+    @KeychainItem("refresh-token")
+    var refreshToken: String?
+}
+```
+
+In the UI test target, set the flag before `app.launch()`:
+
+```swift
+import XCTest
+
+final class AuthUITests: XCTestCase {
+    func testLoginFlowStartsUnauthenticated() {
+        let app = XCUIApplication()
+        app.launchEnvironment["USE_MOCK_KEYCHAIN"] = "1"
+        app.launch()
+        // Secrets uses InMemoryKeychain — clean slate, no entitlements needed
+    }
+}
+```
+
+`static let` with a closure is evaluated once, the first time
+`AppDependencies.keychain` is accessed. By then `ProcessInfo` is fully
+populated, so the environment check is reliable.
+
+### Pre-seeding values for UI tests
+
+An `InMemoryKeychain` starts empty. To simulate a logged-in state, read a
+second environment key in the same initializer and call `upsert` before
+returning the instance:
+
+```swift
+static let keychain: any KeychainProtocol = {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["USE_MOCK_KEYCHAIN"] == "1" {
+        let mock = InMemoryKeychain()
+        if ProcessInfo.processInfo.environment["MOCK_AUTHENTICATED"] == "1" {
+            let key = KeychainKey<String>(
+                service: "com.example.app",
+                account: "api-token"
+            )
+            try? mock.upsert("test-token", for: key)
+        }
+        return mock
+    }
+    #endif
+    return Keychain.shared
+}()
+```
+
+```swift
+func testDashboardAppearsWhenAlreadyLoggedIn() {
+    let app = XCUIApplication()
+    app.launchEnvironment["USE_MOCK_KEYCHAIN"] = "1"
+    app.launchEnvironment["MOCK_AUTHENTICATED"] = "1"
+    app.launch()
+}
+```
+
+> Important: Add `SwiftyChainTesting` to the **app target** only when
+> building for Debug (`#if DEBUG`). Never let it ship in a Release build.
+> A common approach is a conditional SPM dependency or a build-phase check.
+
 ## Test Observation (requires `observation` trait)
 
 When the `observation` trait is enabled, `InMemoryKeychain` fully implements
