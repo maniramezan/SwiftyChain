@@ -46,9 +46,43 @@ Use the optional arguments only when needed:
 - `isSynchronizable` to opt into iCloud Keychain sync
 - `defaultValue` to return a fallback when nothing is stored yet
 
+## Platform Support
+
+| Platform  | Min Version |
+|-----------|------------|
+| macOS     | 13.0+      |
+| iOS       | 16.0+      |
+| iPadOS    | 16.0+      |
+| watchOS   | 9.0+       |
+| tvOS      | 16.0+      |
+| visionOS  | 1.0+       |
+
+> **tvOS note**: `whenPasscodeSetThisDeviceOnly` accessibility and user-presence/biometric protection are unavailable on tvOS. The `#keychainKey` macro emits a warning if you use them on that platform.
+
 ## Traits
 
 The Swift macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are included by default. Two optional traits gate specialised features:
+
+| Trait | Feature | Enable when |
+|-------|---------|-------------|
+| `cryptography` | `kSecClassKey` support — store, load, and manage `SecKey` objects | You need to sign/verify data or work with cryptographic keys |
+| `observation` | `AsyncSequence`-based keychain change stream + `@Observable` integration | You need to react to keychain changes in real time |
+
+Enable traits in your consuming `Package.swift`:
+
+```swift
+.product(name: "SwiftyChain", package: "SwiftyChain", traits: ["observation"])
+```
+
+Or when running tests locally:
+
+```bash
+xcrun swift test --traits "observation,cryptography"
+```
+
+## @KeychainStorage Limitations
+
+`@KeychainStorage` is synchronous and safe for `@MainActor`-isolated types (comparable cost to a UserDefaults read). **Do not use it for items that require user presence or biometric prompts** — those can block the calling thread. Use the async `Keychain` actor for those items instead.
 
 ## Testing
 
