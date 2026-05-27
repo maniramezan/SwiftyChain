@@ -66,7 +66,7 @@
     @Section(title: "Test @KeychainStorage Code") {
         @ContentAndMedia {
             `KeychainStorage` accepts a `backend:` parameter for testing.
-            Pass an ``SwiftyChainTesting/InMemoryKeychainBackend`` to make
+            Pass an `InMemoryKeychainBackend` to make
             property-wrapper tests fast and entitlement-free. The wrapper
             behaves identically to production but reads and writes to memory.
         }

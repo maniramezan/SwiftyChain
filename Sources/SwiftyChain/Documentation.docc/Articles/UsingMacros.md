@@ -67,7 +67,7 @@ let key: KeychainKey<String> = #keychainKey(
 
 `@KeychainItem` and `@KeychainScope` generate accessors that are hardcoded
 to `Keychain.shared`. There is no injection point, so you cannot substitute
-an ``SwiftyChainTesting/InMemoryKeychain`` at the macro level.
+an `InMemoryKeychain` at the macro level.
 
 For code that needs unit tests, use the protocol-based API instead:
 

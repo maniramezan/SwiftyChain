@@ -8,8 +8,8 @@
     @Section(title: "Add the Testing Product") {
         @ContentAndMedia {
             SwiftyChainTesting ships two in-memory test doubles:
-            ``SwiftyChainTesting/InMemoryKeychain`` and
-            ``SwiftyChainTesting/InMemoryKeychainBackend``. Add the product
+            `InMemoryKeychain` and
+            `InMemoryKeychainBackend`. Add the product
             to your test target only — never to a shipping target.
         }
 
@@ -27,7 +27,7 @@
         @ContentAndMedia {
             The key to fast, isolated keychain tests is depending on
             ``KeychainProtocol`` instead of the concrete ``Keychain`` actor.
-            Tests can then supply ``SwiftyChainTesting/InMemoryKeychain``
+            Tests can then supply `InMemoryKeychain`
             without touching the system keychain or requiring entitlements.
         }
 
@@ -61,7 +61,7 @@
     @Section(title: "Test @KeychainStorage Code") {
         @ContentAndMedia {
             When your code uses `@KeychainStorage` or `KeychainStorage`
-            directly, pass an ``SwiftyChainTesting/InMemoryKeychainBackend``
+            directly, pass an `InMemoryKeychainBackend`
             through the `backend:` initializer parameter. The wrapper
             behaves identically to production but reads and writes to memory.
         }

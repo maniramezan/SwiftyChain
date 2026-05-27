@@ -77,7 +77,7 @@
             Code that calls `Keychain.shared` directly is hard to test — it
             hits the real system keychain and requires entitlements. Depend on
             ``KeychainProtocol`` instead so tests can inject
-            ``SwiftyChainTesting/InMemoryKeychain`` without touching the
+            `InMemoryKeychain` without touching the
             system keychain.
         }
 
