@@ -82,7 +82,7 @@ public actor Keychain: KeychainProtocol {
         logKeychainOperationStarted("save", service: key.service, account: key.account)
         do {
             try backend.add(addQuery(for: key), data: value.keychainData())
-            notify(service: key.service, account: key.account, kind: .saved)
+            notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
             logKeychainOperationSucceeded("save", service: key.service, account: key.account)
         } catch {
             logKeychainOperationFailed("save", service: key.service, account: key.account, error: error)
@@ -173,7 +173,7 @@ public actor Keychain: KeychainProtocol {
                     accessibility: key.accessibility
                 )
             )
-            notify(service: key.service, account: key.account, kind: .updated)
+            notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .updated)
             logKeychainOperationSucceeded("update", service: key.service, account: key.account)
         } catch {
             logKeychainOperationFailed("update", service: key.service, account: key.account, error: error)
@@ -211,9 +211,10 @@ public actor Keychain: KeychainProtocol {
 
     /// Deletes a keychain item.
     ///
+    /// This is a no-op when no item exists for the key.
+    ///
     /// - Parameter key: The ``KeychainKey`` that identifies the item to delete.
-    /// - Throws: ``KeychainError/itemNotFound`` if no item exists for the key,
-    ///   or another ``KeychainError`` if the operation fails.
+    /// - Throws: ``KeychainError`` if the underlying operation fails.
     ///
     /// ```swift
     /// try await Keychain.shared.delete(key: key)
@@ -222,7 +223,7 @@ public actor Keychain: KeychainProtocol {
         logKeychainOperationStarted("delete", service: key.service, account: key.account)
         do {
             try backend.delete(matching: identityQuery(for: key))
-            notify(service: key.service, account: key.account, kind: .deleted)
+            notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("delete", service: key.service, account: key.account)
         } catch {
             logKeychainOperationFailed("delete", service: key.service, account: key.account, error: error)
@@ -283,16 +284,24 @@ public actor Keychain: KeychainProtocol {
             }
         logBulkDeleteStarted(query: query)
         do {
-            try backend.delete(
-                matching: KeychainQuery(
+            // Internet passwords use kSecAttrServer, not kSecAttrService.
+            let keychainQuery =
+                query.itemClass == .internetPassword
+                ? KeychainQuery(
+                    itemClass: query.itemClass,
+                    accessGroup: query.accessGroup,
+                    isSynchronizable: isSynchronizable,
+                    server: query.service
+                )
+                : KeychainQuery(
                     itemClass: query.itemClass,
                     service: query.service,
                     accessGroup: query.accessGroup,
                     isSynchronizable: isSynchronizable
                 )
-            )
+            try backend.delete(matching: keychainQuery)
             if let service = query.service {
-                notify(service: service, account: nil, kind: .bulkDeleted)
+                notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
             }
             logBulkDeleteSucceeded(query: query)
         } catch {
@@ -395,7 +404,7 @@ public actor Keychain: KeychainProtocol {
         logKeychainOperationStarted("saveInternetPassword", service: key.server, account: key.account)
         do {
             try backend.add(internetAddQuery(for: key), data: password.keychainData())
-            notify(service: key.server, account: key.account, kind: .saved)
+            notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
             logKeychainOperationSucceeded("saveInternetPassword", service: key.server, account: key.account)
         } catch {
             logKeychainOperationFailed("saveInternetPassword", service: key.server, account: key.account, error: error)
@@ -437,9 +446,10 @@ public actor Keychain: KeychainProtocol {
 
     /// Deletes an internet password from the keychain.
     ///
+    /// This is a no-op when no password is stored for the key.
+    ///
     /// - Parameter key: The ``InternetPasswordKey`` describing the item to delete.
-    /// - Throws: ``KeychainError/itemNotFound`` if no password is stored for the key,
-    ///   or another ``KeychainError`` on failure.
+    /// - Throws: ``KeychainError`` if the underlying operation fails.
     ///
     /// ```swift
     /// try await Keychain.shared.deleteInternetPassword(for: key)
@@ -448,7 +458,7 @@ public actor Keychain: KeychainProtocol {
         logKeychainOperationStarted("deleteInternetPassword", service: key.server, account: key.account)
         do {
             try backend.delete(matching: internetIdentityQuery(for: key))
-            notify(service: key.server, account: key.account, kind: .deleted)
+            notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("deleteInternetPassword", service: key.server, account: key.account)
         } catch {
             logKeychainOperationFailed(
@@ -517,7 +527,7 @@ public actor Keychain: KeychainProtocol {
             observers.removeValue(forKey: id)
         }
 
-        private func notify(service: String, account: String?, kind: MutationKind) {
+        private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {
             let eventKind: KeychainChangeEvent.Kind =
                 switch kind {
                 case .saved: .saved
@@ -529,12 +539,15 @@ public actor Keychain: KeychainProtocol {
             SwiftyChainLoggers.observation.debug(
                 "Emitting observation event=\(String(describing: eventKind), privacy: .public) service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<all>", privacy: .private(mask: .hash))"
             )
-            for observer in observers.values where observer.service == service {
+            for observer in observers.values
+            where observer.service == service
+                && (observer.accessGroup == nil || observer.accessGroup == accessGroup)
+            {
                 observer.continuation.yield(event)
             }
         }
     #else
-        private func notify(service: String, account: String?, kind: MutationKind) {}
+        private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {}
     #endif
 
     // Identity-only query: includes the attributes Apple's Security framework

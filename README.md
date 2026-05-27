@@ -33,8 +33,7 @@ initializer is:
     service: "com.example.app",
     accessGroup: nil,
     accessibility: .whenUnlocked,
-    isSynchronizable: false,
-    defaultValue: nil
+    isSynchronizable: false
 )
 var authToken: String?
 ```
@@ -44,7 +43,6 @@ Use the optional arguments only when needed:
 - `accessGroup` to share credentials with another app target or extension
 - `accessibility` to control when the item can be read
 - `isSynchronizable` to opt into iCloud Keychain sync
-- `defaultValue` to return a fallback when nothing is stored yet
 
 ## Platform Support
 
@@ -57,7 +55,7 @@ Use the optional arguments only when needed:
 | tvOS      | 16.0+      |
 | visionOS  | 1.0+       |
 
-> **tvOS note**: `whenPasscodeSetThisDeviceOnly` accessibility and user-presence/biometric protection are unavailable on tvOS. The `#keychainKey` macro emits a warning if you use them on that platform.
+> **tvOS note**: `whenPasscodeSetThisDeviceOnly` accessibility is unavailable on tvOS. The `#keychainKey` macro emits a warning if you use it on that platform.
 
 ## Traits
 

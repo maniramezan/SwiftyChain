@@ -22,12 +22,12 @@ public macro keychainKey<Value: KeychainStorable>(
 
 /// Synthesizes keychain-backed storage for an optional property.
 ///
-/// Apply `@KeychainItem` to a `var` property; the macro replaces the stored property with
-/// a computed getter/setter pair that reads from and writes to the keychain automatically.
-/// The property type must conform to ``KeychainStorable``.
+/// Apply `@KeychainItem` to a `var` property. The macro generates an `async throws`
+/// getter and a peer `setXxx(_:)` async method that reads from and writes to the
+/// keychain. The property type must conform to ``KeychainStorable``.
 ///
 /// - Reads return `nil` when the item is absent.
-/// - Writes with `nil` delete the item.
+/// - Passing `nil` to the setter deletes the item.
 ///
 /// ```swift
 /// import OSLog
@@ -40,9 +40,9 @@ public macro keychainKey<Value: KeychainStorable>(
 /// let secrets = AppSecrets()
 /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
 ///
-/// secrets.authToken = "abc123"          // saves to keychain
-/// logger.debug("Token present: \(secrets.authToken != nil, privacy: .public)")
-/// secrets.authToken = nil               // deletes from keychain
+/// try await secrets.setAuthToken("abc123")  // saves to keychain
+/// let token = try await secrets.authToken    // loads; nil if absent
+/// try await secrets.setAuthToken(nil)        // deletes from keychain
 /// ```
 @attached(accessor)
 @attached(peer, names: prefixed(_), arbitrary)

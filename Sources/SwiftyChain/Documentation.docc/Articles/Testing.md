@@ -168,19 +168,25 @@ CRUD operations:
 ```
 
 ```swift
+import Security
 import SwiftyChain
 import SwiftyChainTesting
 import Testing
 
 @Test func savesAndLoadsCryptoKey() async throws {
     let keychain = InMemoryKeychain()
-    let keyRef = CryptoKeyReference<StoredSecKey>(label: "signing-key", tag: Data())
-    let secKey = /* generate your test key */
+    let keyRef = CryptoKeyReference<StoredSecKey>(tag: "com.example.signing-key")
+    let attributes: [String: Any] = [
+        kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+        kSecAttrKeySizeInBits as String: 256,
+    ]
+    let secKey = SecKeyCreateRandomKey(attributes as CFDictionary, nil)!
+    let storedKey = StoredSecKey(secKey)
 
-    try await keychain.saveCryptoKey(secKey, for: keyRef)
+    try await keychain.saveCryptoKey(storedKey, for: keyRef)
     let loaded = try await keychain.loadCryptoKey(keyRef: keyRef)
 
-    #expect(loaded == secKey)
+    #expect(loaded.rawValue === secKey)
 }
 ```
 
@@ -192,7 +198,7 @@ specifically validate:
 - Keychain entitlements and access groups are configured correctly.
 - Items survive process restart (persistence).
 - iCloud Keychain sync behavior (`isSynchronizable: true`).
-- Biometric authentication prompts (`KeychainAccessibility.whenPasscodeSetThisDeviceOnly`).
+- User-presence-only accessibility (`KeychainAccessibility.whenPasscodeSetThisDeviceOnly`) — items in this class require the device to have a passcode set.
 
 Most feature logic should be covered by in-memory tests, which are faster, deterministic,
 and do not accumulate orphaned keychain items across test runs.

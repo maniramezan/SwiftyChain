@@ -34,13 +34,25 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-pages-
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
 
-      - name: Build DocC site
+      - name: Build DocC site (SwiftyChain)
         run: |
           xcrun swift package \
             --traits "cryptography,observation" \
             --allow-writing-to-directory ./docs \
             generate-documentation \
             --target SwiftyChain \
+            --output-path ./docs \
+            --warnings-as-errors \
+            --transform-for-static-hosting \
+            --hosting-base-path "${{ steps.pages.outputs.base_path }}"
+
+      - name: Build DocC site (SwiftyChainTesting)
+        run: |
+          xcrun swift package \
+            --traits "cryptography,observation" \
+            --allow-writing-to-directory ./docs \
+            generate-documentation \
+            --target SwiftyChainTesting \
             --output-path ./docs \
             --warnings-as-errors \
             --transform-for-static-hosting \

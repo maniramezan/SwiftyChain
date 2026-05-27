@@ -43,14 +43,7 @@ SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1 swift test --filter SwiftyChainTests
 
 ### Coverage Targets
 
-| Target | Minimum |
-|--------|---------|
-| `SwiftyChain` (core + backend) | ≥ 90% |
-| `SwiftyChainMacros` (macro expansions) | ≥ 85% |
-| Property wrapper + extensions | ≥ 90% |
-| Overall | ≥ 88% |
-
-Coverage must not drop below the thresholds above. Measure with:
+CI enforces a minimum of **80% overall line coverage**. Measure with:
 
 ```bash
 swift test --enable-code-coverage
@@ -78,8 +71,7 @@ All contributions must uphold these invariants:
 2. **No logging of values** — errors may log `OSStatus` codes but never the secret value or its `Data`.
 3. **Strict Sendable** — no shared mutable state outside the `Keychain` actor.
 4. **Explicit accessibility** — `KeychainAccessibility` is always set; no silent fallback to insecure defaults.
-5. **No force unwrap** — all `CFTypeRef` casts use `as?` with typed error throws.
-6. **Zeroing** — `Data` containing secret material is zeroed before deallocation where the OS does not guarantee it.
+5. **No force unwrap** — all `CFTypeRef` casts use `as?` with typed error throws; `!` is never used.
 
 ## Pull Requests
 

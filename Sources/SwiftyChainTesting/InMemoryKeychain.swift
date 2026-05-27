@@ -95,7 +95,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             label: key.label,
             comment: key.comment
         )
-        notify(service: key.service, account: key.account, kind: .saved)
+        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
     }
 
     /// Loads an existing item.
@@ -142,7 +142,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             label: key.label,
             comment: key.comment
         )
-        notify(service: key.service, account: key.account, kind: .updated)
+        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .updated)
     }
 
     /// Saves or replaces an item in a single call.
@@ -166,7 +166,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             isSynchronizable: key.isSynchronizable
         )
         genericPasswords.removeValue(forKey: identity)
-        notify(service: key.service, account: key.account, kind: .deleted)
+        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
     }
 
     /// Removes all generic-password items stored under `service`.
@@ -196,7 +196,7 @@ public actor InMemoryKeychain: KeychainProtocol {
         #endif
         }
         if let service = query.service {
-            notify(service: service, account: nil, kind: .bulkDeleted)
+            notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
         }
     }
 
@@ -240,7 +240,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             password: password,
             accessibility: key.accessibility
         )
-        notify(service: key.server, account: key.account, kind: .saved)
+        notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
     }
 
     /// Loads an internet password.
@@ -274,7 +274,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             accessGroup: key.accessGroup
         )
         internetPasswords.removeValue(forKey: identity)
-        notify(service: key.server, account: key.account, kind: .deleted)
+        notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
     }
 
     #if Observation
@@ -313,7 +313,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             case bulkDeleted
         }
 
-        private func notify(service: String, account: String?, kind: MutationKind) {
+        private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {
             let eventKind: KeychainChangeEvent.Kind =
                 switch kind {
                 case .saved: .saved
@@ -322,7 +322,10 @@ public actor InMemoryKeychain: KeychainProtocol {
                 case .bulkDeleted: .bulkDeleted
                 }
             let event = KeychainChangeEvent(service: service, account: account, kind: eventKind)
-            for observer in observers.values where observer.service == service {
+            for observer in observers.values
+            where observer.service == service
+                && (observer.accessGroup == nil || observer.accessGroup == accessGroup)
+            {
                 observer.continuation.yield(event)
             }
         }
@@ -334,7 +337,7 @@ public actor InMemoryKeychain: KeychainProtocol {
             case bulkDeleted
         }
 
-        private func notify(service: String, account: String?, kind: MutationKind) {}
+        private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {}
     #endif
 
     #if Cryptography
