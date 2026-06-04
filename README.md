@@ -9,6 +9,24 @@
 
 SwiftyChain is a Swift 6.3 keychain wrapper for Apple platforms. It provides a typed `Keychain` actor for async-safe access and an `@KeychainStorage` property wrapper for simple optional values.
 
+## Installation
+
+Add SwiftyChain to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/maniramezan/SwiftyChain", from: "1.0.0"),
+],
+targets: [
+    .target(
+        name: "MyTarget",
+        dependencies: [
+            .product(name: "SwiftyChain", package: "SwiftyChain"),
+        ]
+    ),
+]
+```
+
 ## Quick Start
 
 ```swift
