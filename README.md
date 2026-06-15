@@ -5,7 +5,7 @@
 [![Swift](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2016%20%7C%20macOS%2013%20%7C%20tvOS%2016%20%7C%20watchOS%209%20%7C%20visionOS%201-blue)](https://github.com/maniramezan/SwiftyChain/blob/main/Package.swift)
 [![SPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
-[![License](https://img.shields.io/github/license/maniramezan/SwiftyChain)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-brightgreen)](LICENSE)
 
 SwiftyChain is a Swift 6.3 keychain wrapper for Apple platforms. It provides a typed `Keychain` actor for async-safe access and an `@KeychainStorage` property wrapper for simple optional values.
 
