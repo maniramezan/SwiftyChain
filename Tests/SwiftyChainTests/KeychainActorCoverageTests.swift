@@ -275,6 +275,27 @@ private struct AlwaysFailingSecureStorageBackend: SecureStorageBackend {
     }
 }
 
+private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private var queries: [KeychainQuery] = []
+
+    func add(_ query: KeychainQuery, data: Data) throws {}
+
+    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+        .attributes([])
+    }
+
+    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
+
+    func delete(matching query: KeychainQuery) throws {
+        lock.withLock { queries.append(query) }
+    }
+
+    func lastDeleteQuery() -> KeychainQuery? {
+        lock.withLock { queries.last }
+    }
+}
+
 @Test
 func keychainActorGenericOperationsUseRealKeychainPaths() async throws {
     let keychain = Keychain(backend: TestSecureStorageBackend())
@@ -359,6 +380,25 @@ func keychainActorInternetPasswordOperationsUseRealKeychainPaths() async throws 
     await #expect(throws: KeychainError.itemNotFound) {
         try await keychain.loadInternetPassword(for: secondary)
     }
+}
+
+@Test
+func internetPasswordBulkDeleteDoesNotUseSynchronizableAttribute() async throws {
+    let backend = QueryRecordingSecureStorageBackend()
+    let keychain = Keychain(backend: backend)
+
+    try await keychain.deleteAllItems(
+        matching: KeychainDeleteQuery(
+            service: "api.example.com",
+            onlySynchronizable: true,
+            itemClass: .internetPassword
+        )
+    )
+
+    let query = backend.lastDeleteQuery()
+    #expect(query?.itemClass == .internetPassword)
+    #expect(query?.server == "api.example.com")
+    #expect(query?.isSynchronizable == nil)
 }
 
 @Test

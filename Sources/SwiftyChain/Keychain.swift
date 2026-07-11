@@ -290,7 +290,6 @@ public actor Keychain: KeychainProtocol {
                 ? KeychainQuery(
                     itemClass: query.itemClass,
                     accessGroup: query.accessGroup,
-                    isSynchronizable: isSynchronizable,
                     server: query.service
                 )
                 : KeychainQuery(
