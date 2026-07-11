@@ -71,7 +71,7 @@ All contributions must uphold these invariants:
 2. **No logging of values** — errors may log `OSStatus` codes but never the secret value or its `Data`.
 3. **Strict Sendable** — no shared mutable state outside the `Keychain` actor.
 4. **Explicit accessibility** — `KeychainAccessibility` is always set; no silent fallback to insecure defaults.
-5. **No force unwrap** — all `CFTypeRef` casts use `as?` with typed error throws; `!` is never used.
+5. **No force unwrap** — optional values are never force-unwrapped. The one `CFTypeRef`-to-`SecKey` cast is guarded by a Core Foundation type-ID check before bridging.
 
 ## Pull Requests
 

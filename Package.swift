@@ -31,6 +31,7 @@ let package = Package(
             dependencies: [
                 .target(name: "SwiftyChainMacros")
             ],
+            exclude: ["Documentation.docc"],
             swiftSettings: [
                 .define("Cryptography", .when(traits: ["cryptography"])),
                 .define("Observation", .when(traits: ["observation"])),
@@ -39,6 +40,7 @@ let package = Package(
         .target(
             name: "SwiftyChainTesting",
             dependencies: ["SwiftyChain"],
+            exclude: ["Documentation.docc"],
             swiftSettings: [
                 .define("Cryptography", .when(traits: ["cryptography"])),
                 .define("Observation", .when(traits: ["observation"])),

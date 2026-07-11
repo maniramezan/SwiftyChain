@@ -21,9 +21,11 @@ public struct KeychainDeleteQuery: Sendable, Hashable {
     public let service: String?
     /// The access group to filter by, or `nil` for the default group.
     public let accessGroup: String?
-    /// When `true`, iCloud-synchronized items are included in the deletion. Defaults to `true`.
+    /// When `true`, iCloud-synchronized generic-password items are included in the deletion.
+    /// This option has no effect for internet-password items. Defaults to `true`.
     public let includeSynchronizable: Bool
-    /// When `true`, only iCloud-synchronized items are deleted; non-synchronizable items are left intact.
+    /// When `true`, only iCloud-synchronized generic-password items are deleted; non-synchronizable items are left intact.
+    /// This option has no effect for internet-password items.
     public let onlySynchronizable: Bool
     /// The item class to target. Defaults to ``KeychainItemClass/genericPassword``.
     public let itemClass: KeychainItemClass
@@ -33,8 +35,8 @@ public struct KeychainDeleteQuery: Sendable, Hashable {
     /// - Parameters:
     ///   - service: The service to match. Pass `nil` to delete across all services.
     ///   - accessGroup: The access group to match. Pass `nil` for the default group.
-    ///   - includeSynchronizable: Include iCloud-synchronized items. Defaults to `true`.
-    ///   - onlySynchronizable: Delete only iCloud-synchronized items. Defaults to `false`.
+    ///   - includeSynchronizable: Include iCloud-synchronized generic-password items. Ignored for internet passwords. Defaults to `true`.
+    ///   - onlySynchronizable: Delete only iCloud-synchronized generic-password items. Ignored for internet passwords. Defaults to `false`.
     ///   - itemClass: The keychain item class to target. Defaults to ``KeychainItemClass/genericPassword``.
     public init(
         service: String? = nil,

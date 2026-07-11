@@ -48,7 +48,7 @@ Keychain actor  →  SecureStorageBackend  →  AppleKeychainBackend  →  SecIt
 
 ## Concurrency Model
 
-`Keychain` is a regular `actor` (not `@globalActor`). All calls require `await`. `SecItem*` functions are synchronous C calls — they are wrapped so they run off the main thread, avoiding UI stalls.
+`Keychain` is a regular `actor` (not `@globalActor`). All calls require `await`. `SecItem*` functions remain synchronous calls on the actor's executor, so callers must not assume they are moved off the main thread. Use accessibility policies that avoid user-interaction prompts on latency-sensitive paths.
 
 `@KeychainStorage` is synchronous and calls `AppleKeychainBackend` directly (bypassing the actor) because `SecItem*` is thread-safe and brief. It is intended for `@MainActor`-isolated types only.
 

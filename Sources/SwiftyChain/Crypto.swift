@@ -63,6 +63,17 @@
             self.accessGroup = accessGroup
             self.accessibility = accessibility
         }
+
+        /// Two references identify the same key when their tag and access group match.
+        /// Accessibility controls how a key is stored, not its keychain identity.
+        public static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.tag == rhs.tag && lhs.accessGroup == rhs.accessGroup
+        }
+
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(tag)
+            hasher.combine(accessGroup)
+        }
     }
 
     extension Keychain {

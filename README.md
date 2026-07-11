@@ -98,7 +98,7 @@ xcrun swift test --traits "observation,cryptography"
 
 ## @KeychainStorage Limitations
 
-`@KeychainStorage` is synchronous and safe for `@MainActor`-isolated types (comparable cost to a UserDefaults read). **Do not use it for items with accessibility settings that may trigger user-interaction prompts** — those can block the calling thread. Use the async `Keychain` actor for those items instead.
+`@KeychainStorage` is synchronous and safe for `@MainActor`-isolated types (comparable cost to a UserDefaults read). **Do not use it for items with accessibility settings that may trigger user-interaction prompts** — keychain calls run on the calling thread and can block it. Use the async `Keychain` actor for those items instead.
 
 ## Testing
 

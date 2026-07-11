@@ -67,10 +67,6 @@ public enum InternetProtocol: Sendable, Hashable {
     case pop3S
 }
 
-/// Authentication type for a `kSecClassInternetPassword` keychain item.
-///
-/// Passed to ``InternetPasswordKey`` to describe the authentication scheme
-/// used to access the server whose credentials are being stored.
 /// Authentication methods for a `kSecClassInternetPassword` keychain item.
 ///
 /// Passed to ``InternetPasswordKey`` to identify how the client authenticates

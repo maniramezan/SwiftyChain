@@ -145,6 +145,21 @@
         #expect(backend.deletedQueries.map(\.tag) == [ref.tag])
     }
 
+    @Test
+    func cryptoKeyReferenceIdentityIgnoresAccessibility() {
+        let whenUnlocked = CryptoKeyReference<StoredSecKey>(
+            tag: "tests.crypto.identity",
+            accessibility: .whenUnlocked
+        )
+        let afterFirstUnlock = CryptoKeyReference<StoredSecKey>(
+            tag: "tests.crypto.identity",
+            accessibility: .afterFirstUnlock
+        )
+
+        #expect(whenUnlocked == afterFirstUnlock)
+        #expect(Set([whenUnlocked, afterFirstUnlock]).count == 1)
+    }
+
     private func makeECKey() throws -> SecKey {
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
