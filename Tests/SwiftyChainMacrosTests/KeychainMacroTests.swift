@@ -159,7 +159,9 @@ func keychainScopeMacroExpandsDeleteAll() {
 
                 private static let _keychainScopeAccessGroup: String? = nil
 
-                private static var _keychainScopeInstance: any KeychainProtocol { Keychain.shared }
+                private static var _keychainScopeInstance: any KeychainProtocol {
+                    Keychain.shared
+                }
 
                 static func deleteAll() async throws {
                     try await Self._keychainScopeInstance.deleteAll(
@@ -215,7 +217,9 @@ func keychainScopeMacroUsesCustomKeychain() {
 
                 private static let _keychainScopeAccessGroup: String? = nil
 
-                private static var _keychainScopeInstance: any KeychainProtocol { AppDependencies.keychain }
+                private static var _keychainScopeInstance: any KeychainProtocol {
+                    AppDependencies.keychain
+                }
 
                 static func deleteAll() async throws {
                     try await Self._keychainScopeInstance.deleteAll(
@@ -320,7 +324,9 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
 
                 private static let _keychainScopeAccessGroup: String? = "group.shared"
 
-                private static var _keychainScopeInstance: any KeychainProtocol { Keychain.shared }
+                private static var _keychainScopeInstance: any KeychainProtocol {
+                    Keychain.shared
+                }
 
                 static func deleteAll() async throws {
                     try await Self._keychainScopeInstance.deleteAll(
@@ -471,12 +477,12 @@ func keychainItemMacroDiagnosesUntypedVariable() {
             """,
         diagnostics: [
             DiagnosticSpec(
-                message: "@KeychainItem requires a typed variable declaration",
+                message: "@KeychainItem can only be applied to a variable declaration",
                 line: 2,
                 column: 5,
             ),
             DiagnosticSpec(
-                message: "@KeychainItem can only be applied to a variable declaration",
+                message: "@KeychainItem requires a typed variable declaration",
                 line: 2,
                 column: 5,
             ),
@@ -527,7 +533,9 @@ func keychainItemMacroExpandsScopedClassProperty() {
 
                 private static let _keychainScopeAccessGroup: String? = nil
 
-                private static var _keychainScopeInstance: any KeychainProtocol { Keychain.shared }
+                private static var _keychainScopeInstance: any KeychainProtocol {
+                    Keychain.shared
+                }
 
                 static func deleteAll() async throws {
                     try await Self._keychainScopeInstance.deleteAll(
