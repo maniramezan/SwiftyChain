@@ -1,17 +1,18 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import SwiftyChain
 
-private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked Sendable {
-    private struct GenericIdentity: Hashable {
+private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
+    private struct GenericIdentity: Hashable, Sendable {
         let service: String?
         let account: String?
         let accessGroup: String?
         let isSynchronizable: Bool?
     }
 
-    private struct InternetIdentity: Hashable {
+    private struct InternetIdentity: Hashable, Sendable {
         let server: String?
         let account: String?
         let accessGroup: String?
@@ -21,31 +22,34 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
         let authenticationType: AuthenticationType?
     }
 
-    private struct GenericRecord {
+    private struct GenericRecord: Sendable {
         var data: Data
         var label: String?
         var comment: String?
         var accessibility: KeychainAccessibility?
     }
 
-    private struct InternetRecord {
+    private struct InternetRecord: Sendable {
         var data: Data
         var accessibility: KeychainAccessibility?
     }
 
-    private let lock = NSLock()
-    private var genericPasswords: [GenericIdentity: GenericRecord] = [:]
-    private var internetPasswords: [InternetIdentity: InternetRecord] = [:]
+    private struct State: Sendable {
+        var genericPasswords: [GenericIdentity: GenericRecord] = [:]
+        var internetPasswords: [InternetIdentity: InternetRecord] = [:]
+    }
+
+    private let storage = Mutex(State())
 
     func add(_ query: KeychainQuery, data: Data) throws {
-        try withLock {
+        try storage.withLock { state in
             switch query.itemClass {
             case .genericPassword:
                 let identity = genericIdentity(for: query)
-                guard genericPasswords[identity] == nil else {
+                guard state.genericPasswords[identity] == nil else {
                     throw KeychainError.duplicateItem
                 }
-                genericPasswords[identity] = GenericRecord(
+                state.genericPasswords[identity] = GenericRecord(
                     data: data,
                     label: query.label,
                     comment: query.comment,
@@ -53,10 +57,10 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
                 )
             case .internetPassword:
                 let identity = internetIdentity(for: query)
-                guard internetPasswords[identity] == nil else {
+                guard state.internetPasswords[identity] == nil else {
                     throw KeychainError.duplicateItem
                 }
-                internetPasswords[identity] = InternetRecord(
+                state.internetPasswords[identity] = InternetRecord(
                     data: data,
                     accessibility: query.accessibility
                 )
@@ -69,11 +73,11 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
     }
 
     func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-        try withLock {
+        try storage.withLock { state in
             switch query.itemClass {
             case .genericPassword:
                 if query.matchLimit == .all {
-                    let items: [KeychainQueryResult] = genericPasswords.compactMap { identity, _ in
+                    let items: [KeychainQueryResult] = state.genericPasswords.compactMap { identity, _ in
                         guard matchesGeneric(identity, query: query) else { return nil }
                         return KeychainQueryResult.attributes([
                             .account(identity.account ?? ""),
@@ -86,7 +90,7 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
                     return .items(items)
                 }
 
-                guard let record = genericPasswords[genericIdentity(for: query)] else {
+                guard let record = state.genericPasswords[genericIdentity(for: query)] else {
                     throw KeychainError.itemNotFound
                 }
 
@@ -101,7 +105,7 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
                 }
                 return .attributes([])
             case .internetPassword:
-                guard let record = internetPasswords[internetIdentity(for: query)] else {
+                guard let record = state.internetPasswords[internetIdentity(for: query)] else {
                     throw KeychainError.itemNotFound
                 }
                 if query.returnData {
@@ -117,11 +121,11 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
     }
 
     func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
-        try withLock {
+        try storage.withLock { state in
             switch query.itemClass {
             case .genericPassword:
                 let identity = genericIdentity(for: query)
-                guard var record = genericPasswords[identity] else {
+                guard var record = state.genericPasswords[identity] else {
                     throw KeychainError.itemNotFound
                 }
                 if let data = attributes.data {
@@ -130,17 +134,17 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
                 record.label = attributes.label
                 record.comment = attributes.comment
                 record.accessibility = attributes.accessibility
-                genericPasswords[identity] = record
+                state.genericPasswords[identity] = record
             case .internetPassword:
                 let identity = internetIdentity(for: query)
-                guard var record = internetPasswords[identity] else {
+                guard var record = state.internetPasswords[identity] else {
                     throw KeychainError.itemNotFound
                 }
                 if let data = attributes.data {
                     record.data = data
                 }
                 record.accessibility = attributes.accessibility
-                internetPasswords[identity] = record
+                state.internetPasswords[identity] = record
             #if Cryptography
                 case .cryptographicKey:
                     throw KeychainError.platformUnsupported("Unsupported in test backend")
@@ -150,14 +154,14 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
     }
 
     func delete(matching query: KeychainQuery) throws {
-        withLock {
+        storage.withLock { state in
             switch query.itemClass {
             case .genericPassword:
-                genericPasswords = genericPasswords.filter { identity, _ in
+                state.genericPasswords = state.genericPasswords.filter { identity, _ in
                     !matchesGeneric(identity, query: query)
                 }
             case .internetPassword:
-                internetPasswords = internetPasswords.filter { identity, _ in
+                state.internetPasswords = state.internetPasswords.filter { identity, _ in
                     !matchesInternet(identity, query: query)
                 }
             #if Cryptography
@@ -229,12 +233,6 @@ private final class TestSecureStorageBackend: SecureStorageBackend, @unchecked S
         }
         return true
     }
-
-    private func withLock<Result>(_ body: () throws -> Result) rethrows -> Result {
-        lock.lock()
-        defer { lock.unlock() }
-        return try body()
-    }
 }
 
 private struct UnexpectedResultSecureStorageBackend: SecureStorageBackend {
@@ -275,9 +273,8 @@ private struct AlwaysFailingSecureStorageBackend: SecureStorageBackend {
     }
 }
 
-private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, @unchecked Sendable {
-    private let lock = NSLock()
-    private var queries: [KeychainQuery] = []
+private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, Sendable {
+    private let queries = Mutex<[KeychainQuery]>([])
 
     func add(_ query: KeychainQuery, data: Data) throws {}
 
@@ -288,11 +285,11 @@ private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, @u
     func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
 
     func delete(matching query: KeychainQuery) throws {
-        lock.withLock { queries.append(query) }
+        queries.withLock { $0.append(query) }
     }
 
     func lastDeleteQuery() -> KeychainQuery? {
-        lock.withLock { queries.last }
+        queries.withLock { $0.last }
     }
 }
 
