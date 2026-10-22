@@ -28,7 +28,7 @@ one per test to guarantee that tests do not share state.
 
 ### Thread safety
 
-`InMemoryKeychainBackend` uses `NSLock` to serialize all reads and writes, making
+`InMemoryKeychainBackend` uses a `Mutex` to serialize all reads and writes, making
 it safe to call from multiple threads or concurrent Swift tasks.
 
 ## Topics

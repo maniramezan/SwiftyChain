@@ -1,5 +1,6 @@
 import Foundation
 import SwiftyChain
+import Synchronization
 
 /// An in-memory implementation of `KeychainBackend` for use in tests.
 ///
@@ -26,25 +27,24 @@ import SwiftyChain
 ///
 /// ## Thread safety
 ///
-/// `InMemoryKeychainBackend` is `Sendable` and uses `NSLock` to serialize
+/// `InMemoryKeychainBackend` is `Sendable` and uses a `Mutex` to serialize
 /// concurrent reads and writes, so it is safe to share across threads or tasks.
-public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable {
-    private struct StorageKey: Hashable {
+public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
+    private struct StorageKey: Hashable, Sendable {
         let service: String
         let account: String
         let accessGroup: String?
         let isSynchronizable: Bool
     }
 
-    private struct StorageValue {
+    private struct StorageValue: Sendable {
         let data: Data
         let accessibility: KeychainAccessibility
         let label: String?
         let comment: String?
     }
 
-    private let lock = NSLock()
-    private var items: [StorageKey: StorageValue] = [:]
+    private let storage = Mutex<[StorageKey: StorageValue]>([:])
 
     /// Creates a new, empty in-memory keychain backend.
     public init() {}
@@ -68,7 +68,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
             accessGroup: accessGroup,
             isSynchronizable: isSynchronizable
         )
-        try withLock {
+        try storage.withLock { items in
             if items[key] != nil {
                 throw KeychainError.duplicateItem
             }
@@ -96,7 +96,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
             accessGroup: accessGroup,
             isSynchronizable: isSynchronizable
         )
-        return try withLock {
+        return try storage.withLock { items in
             guard let item = items[key] else {
                 throw KeychainError.itemNotFound
             }
@@ -123,7 +123,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
             accessGroup: accessGroup,
             isSynchronizable: isSynchronizable
         )
-        try withLock {
+        try storage.withLock { items in
             guard items[key] != nil else {
                 throw KeychainError.itemNotFound
             }
@@ -149,14 +149,8 @@ public final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable
             accessGroup: accessGroup,
             isSynchronizable: isSynchronizable
         )
-        _ = withLock {
+        _ = storage.withLock { items in
             items.removeValue(forKey: key)
         }
-    }
-
-    private func withLock<Result>(_ body: () throws -> Result) rethrows -> Result {
-        lock.lock()
-        defer { lock.unlock() }
-        return try body()
     }
 }

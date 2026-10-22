@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import Security
+import Synchronization
 
 /// Synchronous, `@AppStorage`-shaped access to a single optional keychain value.
 ///
@@ -178,13 +179,12 @@ public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
         }
     }
 
-    private final class ErrorBox: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _value: KeychainError?
+    private final class ErrorBox: Sendable {
+        private let storage = Mutex<KeychainError?>(nil)
 
         var value: KeychainError? {
-            get { lock.withLock { _value } }
-            set { lock.withLock { _value = newValue } }
+            get { storage.withLock { $0 } }
+            set { storage.withLock { $0 = newValue } }
         }
     }
 }

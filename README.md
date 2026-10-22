@@ -3,7 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/maniramezan/SwiftyChain/ci.yml?branch=main&label=CI&logo=github)](https://github.com/maniramezan/SwiftyChain/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-GitHub_Pages-0969da?logo=github)](https://maniramezan.github.io/SwiftyChain/)
 [![Swift](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/platforms-iOS%2016%20%7C%20macOS%2013%20%7C%20tvOS%2016%20%7C%20watchOS%209%20%7C%20visionOS%201-blue)](https://github.com/maniramezan/SwiftyChain/blob/main/Package.swift)
+[![Platforms](https://img.shields.io/badge/platforms-iOS%2018%20%7C%20macOS%2015%20%7C%20tvOS%2018%20%7C%20watchOS%2011%20%7C%20visionOS%202-blue)](https://github.com/maniramezan/SwiftyChain/blob/main/Package.swift)
 [![SPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
 [![License](https://img.shields.io/badge/license-MIT-brightgreen)](LICENSE)
 
@@ -66,12 +66,12 @@ Use the optional arguments only when needed:
 
 | Platform  | Min Version |
 |-----------|------------|
-| macOS     | 13.0+      |
-| iOS       | 16.0+      |
-| iPadOS    | 16.0+      |
-| watchOS   | 9.0+       |
-| tvOS      | 16.0+      |
-| visionOS  | 1.0+       |
+| macOS     | 15.0+      |
+| iOS       | 18.0+      |
+| iPadOS    | 18.0+      |
+| watchOS   | 11.0+      |
+| tvOS      | 18.0+      |
+| visionOS  | 2.0+       |
 
 > **tvOS note**: `whenPasscodeSetThisDeviceOnly` accessibility is unavailable on tvOS. The `#keychainKey` macro emits a warning if you use it on that platform.
 
