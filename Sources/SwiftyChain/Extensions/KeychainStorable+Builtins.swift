@@ -48,22 +48,32 @@ extension Bool: KeychainStorable {
 }
 
 extension Int: KeychainStorable {
-    /// Encodes the integer as little-endian bytes.
+    /// Encodes the integer as 8 little-endian bytes on every platform.
+    ///
+    /// The fixed width keeps values readable after iCloud Keychain sync between
+    /// 64-bit devices and hardware with a 32-bit `Int`, such as arm64_32 Apple Watch.
     public func keychainData() throws -> Data {
-        withUnsafeBytes(of: littleEndian) { Data($0) }
+        withUnsafeBytes(of: Int64(self).littleEndian) { Data($0) }
     }
 
-    /// Decodes an integer from little-endian bytes.
+    /// Decodes an integer from 8 little-endian bytes, or from the 4-byte format
+    /// earlier releases wrote on platforms with a 32-bit `Int`.
     ///
-    /// - Throws: ``KeychainError/unexpectedData`` if `data` does not match the expected byte length.
+    /// - Throws: ``KeychainError/unexpectedData`` if `data` is neither 4 nor 8 bytes, or
+    ///   ``KeychainError/decodingFailed(_:)`` if the stored value does not fit in `Int` on this platform.
     public static func fromKeychainData(_ data: Data) throws -> Int {
-        guard data.count == MemoryLayout<Int>.size else {
+        switch data.count {
+        case MemoryLayout<Int64>.size:
+            let value = Int64(littleEndian: data.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) })
+            guard let result = Int(exactly: value) else {
+                throw KeychainError.decodingFailed("Stored integer does not fit in Int on this platform")
+            }
+            return result
+        case MemoryLayout<Int32>.size:
+            return Int(Int32(littleEndian: data.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }))
+        default:
             throw KeychainError.unexpectedData
         }
-        let value = data.withUnsafeBytes { rawBuffer in
-            rawBuffer.loadUnaligned(as: Int.self)
-        }
-        return Int(littleEndian: value)
     }
 }
 
