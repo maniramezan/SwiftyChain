@@ -21,6 +21,10 @@ actor TokenStore {
 The `SwiftyChainTesting` product provides `InMemoryKeychain`, a full in-memory
 implementation of this protocol for use in unit tests.
 
+Change observation and `SecKey` storage are not part of this protocol. With the
+`observation` or `cryptography` trait enabled, depend on ``KeychainObserving`` or
+``KeychainCryptoStoring`` instead; both refine `KeychainProtocol`.
+
 > Tip: Use ``Keychain/upsert(_:for:)`` for most writes — it creates or replaces in one call,
 > with no error on either path.
 
@@ -52,12 +56,7 @@ implementation of this protocol for use in unit tests.
 - ``loadInternetPassword(for:)``
 - ``deleteInternetPassword(for:)``
 
-### Observation
+### Trait-Gated Capabilities
 
-- ``observeKeychainChanges(service:accessGroup:)``
-
-### Cryptographic Keys
-
-- ``saveCryptoKey(_:for:)``
-- ``loadCryptoKey(keyRef:)``
-- ``deleteCryptoKey(keyRef:)``
+- ``KeychainObserving``
+- ``KeychainCryptoStoring``

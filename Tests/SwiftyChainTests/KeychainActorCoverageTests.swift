@@ -43,7 +43,7 @@ private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
 
     func add(_ query: KeychainQuery, data: Data) throws {
         try storage.withLock { state in
-            switch query.itemClass {
+            switch query.itemClass.kind {
             case .genericPassword:
                 let identity = genericIdentity(for: query)
                 guard state.genericPasswords[identity] == nil else {
@@ -64,17 +64,15 @@ private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
                     data: data,
                     accessibility: query.accessibility
                 )
-            #if Cryptography
-                case .cryptographicKey:
-                    throw KeychainError.platformUnsupported("Unsupported in test backend")
-            #endif
+            case .cryptographicKey:
+                throw KeychainError.platformUnsupported("Unsupported in test backend")
             }
         }
     }
 
     func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
         try storage.withLock { state in
-            switch query.itemClass {
+            switch query.itemClass.kind {
             case .genericPassword:
                 if query.matchLimit == .all {
                     let items: [KeychainQueryResult] = state.genericPasswords.compactMap { identity, _ in
@@ -112,17 +110,15 @@ private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
                     return .data(record.data)
                 }
                 return .attributes([])
-            #if Cryptography
-                case .cryptographicKey:
-                    throw KeychainError.platformUnsupported("Unsupported in test backend")
-            #endif
+            case .cryptographicKey:
+                throw KeychainError.platformUnsupported("Unsupported in test backend")
             }
         }
     }
 
     func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
         try storage.withLock { state in
-            switch query.itemClass {
+            switch query.itemClass.kind {
             case .genericPassword:
                 let identity = genericIdentity(for: query)
                 guard var record = state.genericPasswords[identity] else {
@@ -145,17 +141,15 @@ private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
                 }
                 record.accessibility = attributes.accessibility
                 state.internetPasswords[identity] = record
-            #if Cryptography
-                case .cryptographicKey:
-                    throw KeychainError.platformUnsupported("Unsupported in test backend")
-            #endif
+            case .cryptographicKey:
+                throw KeychainError.platformUnsupported("Unsupported in test backend")
             }
         }
     }
 
     func delete(matching query: KeychainQuery) throws {
         storage.withLock { state in
-            switch query.itemClass {
+            switch query.itemClass.kind {
             case .genericPassword:
                 state.genericPasswords = state.genericPasswords.filter { identity, _ in
                     !matchesGeneric(identity, query: query)
@@ -164,10 +158,8 @@ private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
                 state.internetPasswords = state.internetPasswords.filter { identity, _ in
                     !matchesInternet(identity, query: query)
                 }
-            #if Cryptography
-                case .cryptographicKey:
-                    break
-            #endif
+            case .cryptographicKey:
+                break
             }
         }
     }

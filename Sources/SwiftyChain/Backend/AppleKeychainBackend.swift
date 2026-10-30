@@ -292,15 +292,13 @@ extension MatchLimit {
 
 extension KeychainItemClass {
     fileprivate var secValue: CFString {
-        switch self {
+        switch kind {
         case .genericPassword:
             kSecClassGenericPassword
         case .internetPassword:
             kSecClassInternetPassword
-        #if Cryptography
-            case .cryptographicKey:
-                kSecClassKey
-        #endif
+        case .cryptographicKey:
+            kSecClassKey
         }
     }
 }

@@ -210,7 +210,7 @@ func testDashboardAppearsWhenAlreadyLoggedIn() {
 ## Test Observation (requires `observation` trait)
 
 When the `observation` trait is enabled, `InMemoryKeychain` fully implements
-``KeychainProtocol/observeKeychainChanges(service:accessGroup:)``. Events are emitted
+``KeychainObserving/observeKeychainChanges(service:accessGroup:)``. Events are emitted
 synchronously during each mutation, so you can drive and observe changes in the same test:
 
 ```swift

@@ -37,8 +37,12 @@ SwiftyChain ships two opt-in traits that gate additional features at compile tim
 
 | Trait | What it adds |
 |---|---|
-| `observation` | ``Keychain/observeKeychainChanges(service:accessGroup:)`` and ``KeychainChangeEvent`` |
-| `cryptography` | ``Keychain/saveCryptoKey(_:for:)``, ``Keychain/loadCryptoKey(keyRef:)``, ``Keychain/deleteCryptoKey(keyRef:)``, ``CryptoKeyReference``, ``StoredSecKey`` |
+| `observation` | ``KeychainObserving``, ``Keychain/observeKeychainChanges(service:accessGroup:)``, and ``KeychainChangeEvent`` |
+| `cryptography` | ``KeychainCryptoStoring``, ``Keychain/saveCryptoKey(_:for:)``, ``Keychain/loadCryptoKey(keyRef:)``, ``Keychain/deleteCryptoKey(keyRef:)``, ``CryptoKeyReference``, ``StoredSecKey`` |
+
+Traits are unified across your whole dependency graph: if any package enables one, every
+package sees it. Trait-gated requirements therefore live in their own protocols rather than
+in ``KeychainProtocol``, so a dependency turning on a trait never breaks your own conformances.
 
 Enable traits by passing them to the product dependency:
 
@@ -91,10 +95,12 @@ Enable traits by passing them to the product dependency:
 
 ### Observation
 
+- ``KeychainObserving``
 - ``KeychainChangeEvent``
 
 ### Cryptographic Keys
 
+- ``KeychainCryptoStoring``
 - ``CryptoKeyReference``
 - ``StoredSecKey``
 - ``CryptoKeyStorable``
