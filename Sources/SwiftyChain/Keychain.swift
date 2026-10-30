@@ -81,8 +81,7 @@ public actor Keychain: KeychainProtocol {
     public func save<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
         logKeychainOperationStarted("save", service: key.service, account: key.account)
         do {
-            try backend.add(addQuery(for: key), data: value.keychainData())
-            notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
+            try add(value, for: key)
             logKeychainOperationSucceeded("save", service: key.service, account: key.account)
         } catch {
             logKeychainOperationFailed("save", service: key.service, account: key.account, error: error)
@@ -196,7 +195,8 @@ public actor Keychain: KeychainProtocol {
     public func upsert<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
         logKeychainOperationStarted("upsert", service: key.service, account: key.account)
         do {
-            try save(value, for: key)
+            try add(value, for: key)
+            logKeychainOperationSucceeded("upsert", service: key.service, account: key.account)
         } catch KeychainError.duplicateItem {
             SwiftyChainLoggers.keychain.debug(
                 "upsert found duplicate item; updating instead for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
@@ -548,6 +548,13 @@ public actor Keychain: KeychainProtocol {
     #else
         private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {}
     #endif
+
+    // Shared by save and upsert. Logging is left to the caller so an upsert
+    // that hits an existing item does not report a failed save.
+    private func add<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
+        try backend.add(addQuery(for: key), data: value.keychainData())
+        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
+    }
 
     // Identity-only query: includes the attributes Apple's Security framework
     // uses to match an existing item (class + service + account + accessGroup +

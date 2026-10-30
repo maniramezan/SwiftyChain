@@ -14,7 +14,7 @@ import Synchronization
 /// Both the wrapped getter and setter are non-mutating, so the wrapper can be
 /// stored inside `let` values and read from non-mutating contexts.
 @propertyWrapper
-public struct KeychainStorage<Value: KeychainStorable>: @unchecked Sendable {
+public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     private let key: KeychainKey<Value>
     private let backend: any KeychainBackend
     private let errorBox: ErrorBox
