@@ -5,9 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   XCODE_PATH: /Applications/Xcode_26.4.1.app/Contents/Developer
@@ -17,6 +22,7 @@ env:
 jobs:
   lint:
     runs-on: macos-26
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -28,6 +34,7 @@ jobs:
 
   build-test:
     runs-on: macos-26
+    timeout-minutes: 45
     needs: lint
     steps:
       - uses: actions/checkout@v7
@@ -109,6 +116,7 @@ jobs:
 
   documentation:
     runs-on: macos-26
+    timeout-minutes: 30
     needs: lint
     steps:
       - uses: actions/checkout@v7
@@ -159,3 +167,58 @@ jobs:
             --target SwiftyChainTesting \
             --warnings-as-errors \
             --disable-indexing
+
+  linux:
+    name: linux (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 45
+    container: swift:${{ matrix.swift }}-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["6.3.3", "6.4.2"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore SwiftPM caches
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: linux-swift-${{ matrix.swift }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            linux-swift-${{ matrix.swift }}-
+
+      # libsecret is loaded at runtime, so these steps prove the package builds and
+      # fails closed on a machine without it.
+      - name: Build and test without libsecret (default traits)
+        env:
+          SWIFTYCHAIN_EXPECT_NO_LIBSECRET: "1"
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Build and test without libsecret (all traits)
+        run: swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Install the Secret Service runtime
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libsecret-1-0 gnome-keyring dbus-x11 procps
+
+      - name: Test against GNOME Keyring
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION: "1"
+        run: scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Test the timeout against a stopped keyring daemon
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_SECRET_SERVICE_HUNG: "1"
+        run: |
+          scripts/with-gnome-keyring.sh bash -c '
+            pkill -STOP -x gnome-keyring-d
+            swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests
+          '
