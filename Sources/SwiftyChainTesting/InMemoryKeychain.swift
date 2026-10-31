@@ -181,19 +181,14 @@ public actor InMemoryKeychain: KeychainProtocol {
 
     /// Removes all items matching a structured query.
     public func deleteAllItems(matching query: KeychainDeleteQuery) throws {
-        switch query.itemClass {
-        case .genericPassword:
+        if query.itemClass == .genericPassword {
             genericPasswords = genericPasswords.filter { key, _ in
                 !matchesGenericPassword(key, query: query)
             }
-        case .internetPassword:
+        } else if query.itemClass == .internetPassword {
             internetPasswords = internetPasswords.filter { key, _ in
                 !matchesInternetPassword(key, query: query)
             }
-        #if Cryptography
-            case .cryptographicKey:
-                break
-        #endif
         }
         if let service = query.service {
             notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
@@ -384,3 +379,11 @@ public actor InMemoryKeychain: KeychainProtocol {
         return query.includeSynchronizable || query.onlySynchronizable == false
     }
 }
+
+#if Observation
+    extension InMemoryKeychain: KeychainObserving {}
+#endif
+
+#if Cryptography
+    extension InMemoryKeychain: KeychainCryptoStoring {}
+#endif

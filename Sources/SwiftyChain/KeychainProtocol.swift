@@ -88,36 +88,6 @@ public protocol KeychainProtocol: Actor, Sendable {
 
     /// Removes an internet password.
     func deleteInternetPassword(for key: InternetPasswordKey) throws
-
-    #if Observation
-        /// Returns an `AsyncStream` that emits a ``KeychainChangeEvent`` each time an item
-        /// in `service` is saved, updated, deleted, or bulk-deleted.
-        ///
-        /// The stream runs until the caller drops the reference or cancels the enclosing task.
-        /// Multiple concurrent observers on the same service are each notified independently.
-        ///
-        /// > Note: Changes made through ``KeychainStorage`` bypass the ``Keychain`` actor
-        /// > and do **not** appear in this stream. Write through ``Keychain`` directly if
-        /// > change notifications are required.
-        func observeKeychainChanges(
-            service: String,
-            accessGroup: String?
-        ) -> AsyncStream<KeychainChangeEvent>
-    #endif
-    #if Cryptography
-        /// Saves a cryptographic key to the keychain.
-        ///
-        /// - Throws: ``KeychainError/duplicateItem`` if a key with the same reference already exists.
-        func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws
-
-        /// Loads a cryptographic key from the keychain.
-        ///
-        /// - Throws: ``KeychainError/itemNotFound`` if no key matching `keyRef` exists.
-        func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey
-
-        /// Removes a cryptographic key from the keychain.
-        func deleteCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws
-    #endif
 }
 
 extension KeychainProtocol {
@@ -132,10 +102,53 @@ extension KeychainProtocol {
     public func allAccounts(service: String) throws -> [String] {
         try allAccounts(service: service, accessGroup: nil)
     }
+}
 
-    #if Observation
+#if Observation
+    /// A keychain that publishes change events, available with the `observation` trait.
+    ///
+    /// ``Keychain`` and `SwiftyChainTesting.InMemoryKeychain` conform to this protocol.
+    /// It is kept separate from ``KeychainProtocol`` so that enabling the trait anywhere
+    /// in a dependency graph never adds requirements to your own `KeychainProtocol` types.
+    public protocol KeychainObserving: KeychainProtocol {
+        /// Returns an `AsyncStream` that emits a ``KeychainChangeEvent`` each time an item
+        /// in `service` is saved, updated, deleted, or bulk-deleted.
+        ///
+        /// The stream runs until the caller drops the reference or cancels the enclosing task.
+        /// Multiple concurrent observers on the same service are each notified independently.
+        ///
+        /// > Note: Changes made through ``KeychainStorage`` bypass the ``Keychain`` actor
+        /// > and do **not** appear in this stream. Write through ``Keychain`` directly if
+        /// > change notifications are required.
+        func observeKeychainChanges(
+            service: String,
+            accessGroup: String?
+        ) -> AsyncStream<KeychainChangeEvent>
+    }
+
+    extension KeychainObserving {
         public func observeKeychainChanges(service: String) -> AsyncStream<KeychainChangeEvent> {
             observeKeychainChanges(service: service, accessGroup: nil)
         }
-    #endif
-}
+    }
+#endif
+
+#if Cryptography
+    /// A keychain that stores `SecKey` references, available with the `cryptography` trait.
+    ///
+    /// ``Keychain`` and `SwiftyChainTesting.InMemoryKeychain` conform to this protocol.
+    /// It is kept separate from ``KeychainProtocol`` so that enabling the trait anywhere
+    /// in a dependency graph never adds requirements to your own `KeychainProtocol` types.
+    public protocol KeychainCryptoStoring: KeychainProtocol {
+        /// Saves a cryptographic key to the keychain, replacing any key stored under the same reference.
+        func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws
+
+        /// Loads a cryptographic key from the keychain.
+        ///
+        /// - Throws: ``KeychainError/itemNotFound`` if no key matching `keyRef` exists.
+        func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey
+
+        /// Removes a cryptographic key from the keychain.
+        func deleteCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws
+    }
+#endif

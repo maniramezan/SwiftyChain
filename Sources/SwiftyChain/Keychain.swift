@@ -672,3 +672,11 @@ public actor Keychain: KeychainProtocol {
         return String(reflecting: type(of: error))
     }
 }
+
+#if Observation
+    extension Keychain: KeychainObserving {}
+#endif
+
+#if Cryptography
+    extension Keychain: KeychainCryptoStoring {}
+#endif
