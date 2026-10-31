@@ -1,4 +1,4 @@
-#if Cryptography
+#if Cryptography && canImport(Security)
     import Foundation
     import Security
     import Testing

@@ -9,6 +9,7 @@ let traitDefines: [SwiftSetting] = [
 ]
 
 let applePlatforms: [Platform] = [.macOS, .macCatalyst, .iOS, .tvOS, .watchOS, .visionOS]
+let nonApplePlatforms: [Platform] = [.linux, .android, .windows, .openbsd, .wasi]
 
 let package = Package(
     name: "SwiftyChain",
@@ -31,10 +32,18 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "603.0.1"..<"605.0.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.16.2"),
     ],
     targets: [
         .target(
             name: "SwiftyChainCore",
+            dependencies: [
+                .product(
+                    name: "Logging",
+                    package: "swift-log",
+                    condition: .when(platforms: nonApplePlatforms)
+                )
+            ],
             swiftSettings: traitDefines
         ),
         .target(
