@@ -17,7 +17,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
 
     func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
         logSecurityCall("SecItemCopyMatching", query: query)
-        var secAttributes = secQuery(from: query)
+        var secAttributes = matchQuery(from: query)
         secAttributes[kSecReturnData as String] = query.returnData
         secAttributes[kSecReturnAttributes as String] = query.returnAttributes
         secAttributes[kSecMatchLimit as String] = query.matchLimit.secValue
@@ -70,7 +70,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
             updateAttributes[kSecAttrAccessible as String] = accessibility.secValue
         }
 
-        let status = SecItemUpdate(secQuery(from: query) as CFDictionary, updateAttributes as CFDictionary)
+        let status = SecItemUpdate(matchQuery(from: query) as CFDictionary, updateAttributes as CFDictionary)
         try mapStatus(status)
         SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
     }
@@ -80,7 +80,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         // The macOS legacy keychain removes one matching item per
         // SecItemDelete call, even when more match. Loop until the keychain
         // reports no more matches so bulk deletes actually clear everything.
-        let attributes = secQuery(from: query) as CFDictionary
+        let attributes = matchQuery(from: query) as CFDictionary
         for _ in 0..<deleteSafetyCap {
             let status = SecItemDelete(attributes)
             if status == errSecItemNotFound {
@@ -96,6 +96,18 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
     }
 
     private var deleteSafetyCap: Int { 10_000 }
+
+    // Query used to find existing items. When the caller leaves
+    // `isSynchronizable` unset, match both synchronizable and local items:
+    // omitting kSecAttrSynchronizable makes Security.framework skip
+    // iCloud Keychain items entirely.
+    internal func matchQuery(from query: KeychainQuery) -> [String: Any] {
+        var attributes = secQuery(from: query)
+        if query.isSynchronizable == nil {
+            attributes[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        }
+        return attributes
+    }
 
     // This keychain query is assembled from many optional fields on purpose.
     // Keeping the mapping centralized avoids diverging Security.framework call sites.

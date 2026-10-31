@@ -17,6 +17,24 @@ func intRoundTrips(value: Int) throws {
     #expect(try Int.fromKeychainData(value.keychainData()) == value)
 }
 
+@Test(arguments: [0, 1, -1, Int.max, Int.min])
+func intEncodesAsEightBytes(value: Int) throws {
+    #expect(try value.keychainData().count == 8)
+}
+
+@Test(arguments: [Int32(0), Int32(42), Int32(-7), Int32.max, Int32.min])
+func intDecodesLegacyFourByteFormat(value: Int32) throws {
+    let legacy = withUnsafeBytes(of: value.littleEndian) { Data($0) }
+    #expect(try Int.fromKeychainData(legacy) == Int(value))
+}
+
+@Test(arguments: [Data(), Data([0x01]), Data(repeating: 0, count: 5)])
+func intRejectsUnexpectedLength(data: Data) {
+    #expect(throws: KeychainError.unexpectedData) {
+        try Int.fromKeychainData(data)
+    }
+}
+
 @Test(arguments: [0.0, 1.25, -99.5])
 func doubleRoundTrips(value: Double) throws {
     #expect(try Double.fromKeychainData(value.keychainData()) == value)
