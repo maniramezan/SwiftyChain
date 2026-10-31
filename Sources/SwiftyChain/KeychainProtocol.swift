@@ -133,7 +133,7 @@ extension KeychainProtocol {
     }
 #endif
 
-#if Cryptography
+#if Cryptography && canImport(Security)
     /// A keychain that stores `SecKey` references, available with the `cryptography` trait.
     ///
     /// ``Keychain`` and `SwiftyChainTesting.InMemoryKeychain` conform to this protocol.

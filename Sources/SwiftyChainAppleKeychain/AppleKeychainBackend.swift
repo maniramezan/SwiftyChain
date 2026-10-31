@@ -1,8 +1,14 @@
 import Foundation
 import Security
+import SwiftyChainCore
 
-internal struct AppleKeychainBackend: SecureStorageBackend {
-    func add(_ query: KeychainQuery, data: Data) throws {
+/// The ``SecureStorageBackend`` for Apple platforms, backed by the Security framework.
+package struct AppleKeychainBackend: SecureStorageBackend {
+    package let capabilities: SecureStorageCapabilities = .all
+
+    package init() {}
+
+    package func add(_ query: KeychainQuery, data: Data) throws {
         logSecurityCall("SecItemAdd", query: query)
         var attributes = secQuery(from: query)
         attributes[kSecValueData as String] = data
@@ -15,7 +21,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         SwiftyChainLoggers.backend.debug("SecItemAdd succeeded")
     }
 
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+    package func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
         logSecurityCall("SecItemCopyMatching", query: query)
         var secAttributes = matchQuery(from: query)
         secAttributes[kSecReturnData as String] = query.returnData
@@ -54,7 +60,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         return .attributes([])
     }
 
-    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
+    package func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
         logSecurityCall("SecItemUpdate", query: query)
         var updateAttributes: [String: Any] = [:]
         if let data = attributes.data {
@@ -75,7 +81,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
         SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
     }
 
-    func delete(matching query: KeychainQuery) throws {
+    package func delete(matching query: KeychainQuery) throws {
         logSecurityCall("SecItemDelete", query: query)
         // The macOS legacy keychain removes one matching item per
         // SecItemDelete call, even when more match. Loop until the keychain
@@ -101,7 +107,7 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
     // `isSynchronizable` unset, match both synchronizable and local items:
     // omitting kSecAttrSynchronizable makes Security.framework skip
     // iCloud Keychain items entirely.
-    internal func matchQuery(from query: KeychainQuery) -> [String: Any] {
+    package func matchQuery(from query: KeychainQuery) -> [String: Any] {
         var attributes = secQuery(from: query)
         if query.isSynchronizable == nil {
             attributes[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
@@ -198,96 +204,20 @@ internal struct AppleKeychainBackend: SecureStorageBackend {
     }
 }
 
-extension AppleKeychainBackend: KeychainBackend {
-    func save(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        try add(
-            KeychainQuery(
-                itemClass: .genericPassword,
-                service: service,
-                account: account,
-                accessGroup: accessGroup,
-                accessibility: accessibility,
-                isSynchronizable: isSynchronizable,
-                label: label,
-                comment: comment
-            ),
-            data: data
-        )
-    }
-
-    func load(
-        service: String,
-        account: String,
-        accessGroup: String?,
-        isSynchronizable: Bool
-    ) throws -> Data {
-        let result = try copyMatching(
-            KeychainQuery(
-                itemClass: .genericPassword,
-                service: service,
-                account: account,
-                accessGroup: accessGroup,
-                isSynchronizable: isSynchronizable,
-                returnData: true
-            )
-        )
-        guard case .data(let data) = result else {
-            throw KeychainError.unexpectedData
+extension KeychainAccessibility {
+    package var secValue: CFString {
+        switch self {
+        case .afterFirstUnlock:
+            kSecAttrAccessibleAfterFirstUnlock
+        case .afterFirstUnlockThisDeviceOnly:
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        case .whenUnlocked:
+            kSecAttrAccessibleWhenUnlocked
+        case .whenUnlockedThisDeviceOnly:
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        case .whenPasscodeSetThisDeviceOnly:
+            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
         }
-        return data
-    }
-
-    func update(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        try update(
-            matching: KeychainQuery(
-                itemClass: .genericPassword,
-                service: service,
-                account: account,
-                accessGroup: accessGroup,
-                isSynchronizable: isSynchronizable
-            ),
-            to: KeychainAttributes(
-                data: data,
-                label: label,
-                comment: comment,
-                accessibility: accessibility
-            )
-        )
-    }
-
-    func delete(
-        service: String,
-        account: String,
-        accessGroup: String?,
-        isSynchronizable: Bool
-    ) throws {
-        try delete(
-            matching: KeychainQuery(
-                itemClass: .genericPassword,
-                service: service,
-                account: account,
-                accessGroup: accessGroup,
-                isSynchronizable: isSynchronizable
-            )
-        )
     }
 }
 
@@ -370,7 +300,7 @@ extension AuthenticationType {
 
 #if Cryptography
     extension AppleKeychainBackend: CryptoStorageBackend {
-        func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery) throws {
+        package func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery) throws {
             var attributes = cryptoSecQuery(from: query)
             attributes[kSecValueRef as String] = key
             if let accessibility = query.accessibility {
@@ -380,7 +310,7 @@ extension AuthenticationType {
             try mapStatus(status)
         }
 
-        func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
+        package func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
             var attributes = cryptoSecQuery(from: query)
             attributes[kSecReturnRef as String] = true
             attributes[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -397,7 +327,7 @@ extension AuthenticationType {
             return result as! SecKey
         }
 
-        func deleteCryptoKey(query: CryptoKeyQuery) throws {
+        package func deleteCryptoKey(query: CryptoKeyQuery) throws {
             let status = SecItemDelete(cryptoSecQuery(from: query) as CFDictionary)
             if status == errSecItemNotFound { return }
             try mapStatus(status)

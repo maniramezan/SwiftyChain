@@ -7,6 +7,8 @@
     @testable import SwiftyChain
 
     private struct NonCryptoSecureStorageBackend: SecureStorageBackend {
+        let capabilities: SecureStorageCapabilities = .all
+
         func add(_ query: KeychainQuery, data: Data) throws {}
 
         func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
@@ -21,6 +23,8 @@
     private final class MockCryptoSecureStorageBackend: SecureStorageBackend, CryptoStorageBackend,
         @unchecked Sendable
     {
+        let capabilities: SecureStorageCapabilities = .all
+
         private var storedKeys: [String: SecKey] = [:]
         private(set) var deletedQueries: [CryptoKeyQuery] = []
 
@@ -92,13 +96,19 @@
         let secKey = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.unsupported")
 
-        await #expect(throws: KeychainError.platformUnsupported("CryptoStorageBackend not available")) {
+        await #expect(
+            throws: KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
+        ) {
             try await keychain.saveCryptoKey(StoredSecKey(secKey), for: ref)
         }
-        await #expect(throws: KeychainError.platformUnsupported("CryptoStorageBackend not available")) {
+        await #expect(
+            throws: KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
+        ) {
             _ = try await keychain.loadCryptoKey(keyRef: ref)
         }
-        await #expect(throws: KeychainError.platformUnsupported("CryptoStorageBackend not available")) {
+        await #expect(
+            throws: KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
+        ) {
             try await keychain.deleteCryptoKey(keyRef: ref)
         }
     }

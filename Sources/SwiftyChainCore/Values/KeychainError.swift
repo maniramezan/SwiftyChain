@@ -16,24 +16,29 @@ public enum KeychainError: Error, Sendable, Equatable {
     case encodingFailed(String)
     /// Deserialization of `Data` back into the value type failed. Contains a description of the underlying error.
     case decodingFailed(String)
-    /// The Security framework returned a non-zero `OSStatus` code.
-    case operationFailed(OSStatus)
+    /// The platform keychain reported a failure with this status code.
+    ///
+    /// On Apple platforms the code is the Security framework `OSStatus`. On Linux
+    /// it is the libsecret or GLib error code.
+    case operationFailed(Int32)
     /// The app lacks entitlements to access the specified access group.
     case accessGroupDenied
     /// The requested operation is not available on this platform or configuration.
     case platformUnsupported(String)
+    /// The platform keychain did not respond before the operation's timeout elapsed.
+    case timedOut
 }
 
 extension KeychainError {
-    static func encodingFailed(_ error: any Error) -> KeychainError {
+    package static func encodingFailed(_ error: any Error) -> KeychainError {
         .encodingFailed(String(describing: error))
     }
 
-    static func decodingFailed(_ error: any Error) -> KeychainError {
+    package static func decodingFailed(_ error: any Error) -> KeychainError {
         .decodingFailed(String(describing: error))
     }
 
-    internal var logName: String {
+    package var logName: String {
         switch self {
         case .itemNotFound:
             "itemNotFound"
@@ -55,6 +60,8 @@ extension KeychainError {
             "accessGroupDenied"
         case .platformUnsupported:
             "platformUnsupported"
+        case .timedOut:
+            "timedOut"
         }
     }
 }

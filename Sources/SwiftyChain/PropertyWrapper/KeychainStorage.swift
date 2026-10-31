@@ -1,6 +1,4 @@
 import Foundation
-import OSLog
-import Security
 import Synchronization
 
 /// Synchronous, `@AppStorage`-shaped access to a single optional keychain value.
@@ -53,7 +51,7 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
         self.init(
             account,
             service: service,
-            backend: AppleKeychainBackend(),
+            backend: SecureStorageKeychainBackend(PlatformDefaultBackend.make()),
             accessGroup: accessGroup,
             accessibility: accessibility,
             isSynchronizable: isSynchronizable
