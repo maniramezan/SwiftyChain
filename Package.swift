@@ -52,10 +52,23 @@ let package = Package(
             swiftSettings: traitDefines
         ),
         .target(
+            name: "CSwiftyChainSecret",
+            linkerSettings: [.linkedLibrary("dl", .when(platforms: [.linux]))]
+        ),
+        .target(
+            name: "SwiftyChainSecretService",
+            dependencies: [
+                "SwiftyChainCore",
+                .target(name: "CSwiftyChainSecret", condition: .when(platforms: [.linux])),
+            ],
+            swiftSettings: traitDefines
+        ),
+        .target(
             name: "SwiftyChain",
             dependencies: [
                 "SwiftyChainCore",
                 .target(name: "SwiftyChainAppleKeychain", condition: .when(platforms: applePlatforms)),
+                .target(name: "SwiftyChainSecretService", condition: .when(platforms: [.linux])),
                 .target(name: "SwiftyChainMacros"),
             ],
             exclude: ["Documentation.docc"],
@@ -92,6 +105,15 @@ let package = Package(
                 "SwiftyChain",
                 "SwiftyChainTesting",
                 .target(name: "SwiftyChainAppleKeychain", condition: .when(platforms: applePlatforms)),
+                .target(name: "SwiftyChainSecretService", condition: .when(platforms: [.linux])),
+            ],
+            swiftSettings: traitDefines
+        ),
+        .testTarget(
+            name: "SwiftyChainSecretServiceTests",
+            dependencies: [
+                "SwiftyChainSecretService",
+                .target(name: "CSwiftyChainSecret", condition: .when(platforms: [.linux])),
             ],
             swiftSettings: traitDefines
         ),

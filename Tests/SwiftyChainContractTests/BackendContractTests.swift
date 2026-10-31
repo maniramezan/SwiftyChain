@@ -5,6 +5,8 @@ import Testing
 
 #if canImport(SwiftyChainAppleKeychain)
     import SwiftyChainAppleKeychain
+#elseif os(Linux)
+    import SwiftyChainSecretService
 #endif
 
 /// A backend the contract suite runs against, with the features the test host can exercise.
@@ -35,6 +37,17 @@ struct BackendFixture: Sendable, CustomTestStringConvertible {
                         make: { AppleKeychainBackend() },
                         canWriteSynchronizableItems: false,
                         canUseCustomAccessGroups: false
+                    )
+                )
+            }
+        #elseif os(Linux)
+            if ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION"] == "1" {
+                fixtures.append(
+                    BackendFixture(
+                        name: "secret-service",
+                        make: { SecretServiceBackend() },
+                        canWriteSynchronizableItems: false,
+                        canUseCustomAccessGroups: true
                     )
                 )
             }

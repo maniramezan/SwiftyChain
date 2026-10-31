@@ -2,6 +2,8 @@ import Foundation
 
 #if canImport(SwiftyChainAppleKeychain)
     import SwiftyChainAppleKeychain
+#elseif os(Linux)
+    import SwiftyChainSecretService
 #endif
 
 /// Chooses the ``SecureStorageBackend`` that `Keychain()` and `KeychainStorage` use
@@ -10,6 +12,8 @@ package enum PlatformDefaultBackend {
     package static func make() -> any SecureStorageBackend {
         #if canImport(SwiftyChainAppleKeychain)
             AppleKeychainBackend()
+        #elseif os(Linux)
+            SecretServiceBackend()
         #else
             UnsupportedPlatformBackend()
         #endif
