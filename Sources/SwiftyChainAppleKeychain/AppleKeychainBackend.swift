@@ -196,7 +196,7 @@
                 SwiftyChainLoggers.backend.debug("Security operation requires user presence")
                 throw KeychainError.userPresenceRequired
             case errSecMissingEntitlement:
-                SwiftyChainLoggers.backend.error("Security operation missing entitlement")
+                SwiftyChainLoggers.backend.debug("Security operation missing entitlement")
                 throw KeychainError.accessGroupDenied
             default:
                 SwiftyChainLoggers.backend.error("Security operation failed with status=\(status, privacy: .public)")

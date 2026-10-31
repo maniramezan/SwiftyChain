@@ -45,7 +45,7 @@ package struct UnsupportedPlatformBackend: SecureStorageBackend {
     }
 
     private func unsupported() throws -> Never {
-        SwiftyChainLoggers.backend.error("Keychain operation requested on a platform without a keychain backend")
+        SwiftyChainLoggers.backend.debug("Keychain operation requested on a platform without a keychain backend")
         throw KeychainError.platformUnsupported("No secure storage is available on this platform")
     }
 }

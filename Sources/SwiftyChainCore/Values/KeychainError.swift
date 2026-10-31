@@ -41,6 +41,18 @@ extension KeychainError {
         .decodingFailed(String(describing: error))
     }
 
+    /// Whether the error is an outcome the caller receives and handles, such as a missing
+    /// item, rather than a fault in the platform keychain. Expected outcomes are logged at
+    /// debug level; only faults are logged as errors.
+    package var isExpectedOutcome: Bool {
+        switch self {
+        case .unexpectedData, .operationFailed:
+            false
+        default:
+            true
+        }
+    }
+
     package var logName: String {
         switch self {
         case .itemNotFound:

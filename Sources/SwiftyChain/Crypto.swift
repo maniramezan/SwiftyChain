@@ -158,7 +158,7 @@
         private func cryptoStorageBackend() throws -> any CryptoStorageBackend {
             guard backend.capabilities.contains(.cryptoKeys), let cryptoBackend = backend as? any CryptoStorageBackend
             else {
-                SwiftyChainLoggers.keychain.error("Crypto key operation requested on a backend without cryptoKeys")
+                SwiftyChainLoggers.keychain.debug("Crypto key operation requested on a backend without cryptoKeys")
                 throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
             }
             return cryptoBackend

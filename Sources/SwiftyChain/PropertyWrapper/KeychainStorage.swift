@@ -103,9 +103,15 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
                 errorBox.value = nil
                 return nil
             } catch let error as KeychainError {
-                SwiftyChainLoggers.storage.error(
-                    "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                )
+                if error.isExpectedOutcome {
+                    SwiftyChainLoggers.storage.debug(
+                        "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                } else {
+                    SwiftyChainLoggers.storage.error(
+                        "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                }
                 errorBox.value = error
                 return nil
             } catch {
@@ -165,9 +171,15 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
             case .success:
                 errorBox.value = nil
             case .failure(let error as KeychainError):
-                SwiftyChainLoggers.storage.error(
-                    "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                )
+                if error.isExpectedOutcome {
+                    SwiftyChainLoggers.storage.debug(
+                        "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                } else {
+                    SwiftyChainLoggers.storage.error(
+                        "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                }
                 errorBox.value = error
             case .failure:
                 SwiftyChainLoggers.storage.error(

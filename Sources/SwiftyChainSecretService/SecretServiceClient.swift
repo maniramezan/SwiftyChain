@@ -129,9 +129,15 @@
                     return result
                 } catch let failure as SecretServiceFailure {
                     let keychainError = SecretServiceErrors.keychainError(for: failure, timerFired: timer.fired)
-                    SwiftyChainLoggers.backend.error(
-                        "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
-                    )
+                    if keychainError.isExpectedOutcome {
+                        SwiftyChainLoggers.backend.debug(
+                            "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
+                        )
+                    } else {
+                        SwiftyChainLoggers.backend.error(
+                            "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
+                        )
+                    }
                     throw keychainError
                 }
             }
@@ -142,10 +148,10 @@
             case SWIFTYCHAIN_SECRET_LOADED:
                 break
             case SWIFTYCHAIN_SECRET_SYMBOL_MISSING:
-                SwiftyChainLoggers.backend.error("libsecret is missing required symbols")
+                SwiftyChainLoggers.backend.debug("libsecret is missing required symbols")
                 throw SecretServiceUnavailability.libraryTooOld.error
             default:
-                SwiftyChainLoggers.backend.error("libsecret-1.so.0 could not be loaded")
+                SwiftyChainLoggers.backend.debug("libsecret-1.so.0 could not be loaded")
                 throw SecretServiceUnavailability.libraryMissing.error
             }
             var error: OpaquePointer?
@@ -153,7 +159,7 @@
                 if let error {
                     swiftychain_secret_error_free(error)
                 }
-                SwiftyChainLoggers.backend.error("No D-Bus session bus is available")
+                SwiftyChainLoggers.backend.debug("No D-Bus session bus is available")
                 throw SecretServiceUnavailability.noSessionBus.error
             }
         }

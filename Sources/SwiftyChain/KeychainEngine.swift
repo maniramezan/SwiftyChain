@@ -358,9 +358,15 @@ package struct KeychainEngine: Sendable {
         error: any Error
     ) {
         let errorName = keychainLogErrorName(for: error)
-        SwiftyChainLoggers.keychain.error(
-            "\(operation) failed for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
-        )
+        if isExpectedOutcome(error) {
+            SwiftyChainLoggers.keychain.debug(
+                "\(operation) failed for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
+            )
+        } else {
+            SwiftyChainLoggers.keychain.error(
+                "\(operation) failed for service=\(service, privacy: .private(mask: .hash)) account=\(account ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
+            )
+        }
     }
 
     private func logBulkDeleteStarted(query: KeychainDeleteQuery) {
@@ -377,9 +383,21 @@ package struct KeychainEngine: Sendable {
 
     private func logBulkDeleteFailed(query: KeychainDeleteQuery, error: any Error) {
         let errorName = keychainLogErrorName(for: error)
-        SwiftyChainLoggers.keychain.error(
-            "deleteAllItems failed for service=\(query.service ?? "<all>", privacy: .private(mask: .hash)) accessGroup=\(query.accessGroup ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
-        )
+        if isExpectedOutcome(error) {
+            SwiftyChainLoggers.keychain.debug(
+                "deleteAllItems failed for service=\(query.service ?? "<all>", privacy: .private(mask: .hash)) accessGroup=\(query.accessGroup ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
+            )
+        } else {
+            SwiftyChainLoggers.keychain.error(
+                "deleteAllItems failed for service=\(query.service ?? "<all>", privacy: .private(mask: .hash)) accessGroup=\(query.accessGroup ?? "<none>", privacy: .private(mask: .hash)) error=\(errorName, privacy: .public)"
+            )
+        }
+    }
+
+    // Failures the caller receives as a KeychainError and can act on are logged at debug
+    // level; anything else points at a fault and is logged as an error.
+    private func isExpectedOutcome(_ error: any Error) -> Bool {
+        (error as? KeychainError)?.isExpectedOutcome ?? false
     }
 
     private func keychainLogErrorName(for error: any Error) -> String {

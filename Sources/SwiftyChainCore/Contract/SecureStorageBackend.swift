@@ -82,7 +82,7 @@ package enum SecureStorageQueryValidator {
     }
 
     private static func reject(_ capability: String, message: String) throws {
-        SwiftyChainLoggers.backend.error(
+        SwiftyChainLoggers.backend.debug(
             "Rejected query using unsupported capability=\(capability, privacy: .public)"
         )
         throw KeychainError.platformUnsupported(message)
