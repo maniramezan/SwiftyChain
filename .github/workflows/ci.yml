@@ -5,18 +5,25 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   XCODE_PATH: /Applications/Xcode_26.4.1.app/Contents/Developer
   TRAITS: "cryptography,observation"
+  DOCS_SWIFT_VERSION: "6.4.2"
   COVERAGE_MIN: "80"
 
 jobs:
   lint:
     runs-on: macos-26
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -28,6 +35,7 @@ jobs:
 
   build-test:
     runs-on: macos-26
+    timeout-minutes: 45
     needs: lint
     steps:
       - uses: actions/checkout@v7
@@ -109,12 +117,20 @@ jobs:
 
   documentation:
     runs-on: macos-26
+    timeout-minutes: 30
     needs: lint
     steps:
       - uses: actions/checkout@v7
 
       - name: Select Xcode 26.4.1
         run: sudo xcode-select -s "${XCODE_PATH}"
+
+      # DocC in Swift 6.3 omits symbols that SwiftyChain re-exports from
+      # SwiftyChainCore; 6.4 documents them, so docs build with a 6.4 toolchain.
+      - name: Set up Swift ${{ env.DOCS_SWIFT_VERSION }}
+        uses: ./.github/actions/setup-swift-toolchain
+        with:
+          version: ${{ env.DOCS_SWIFT_VERSION }}
 
       - name: Restore SwiftPM caches
         uses: actions/cache@v6
@@ -123,39 +139,95 @@ jobs:
             .build
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ env.DOCS_SWIFT_VERSION }}-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-swift-${{ env.DOCS_SWIFT_VERSION }}-swiftpm-docs-
 
+      # Builds the same combined archive the Pages deploy publishes, so a broken
+      # site fails the pull request instead of the deploy.
       - name: Build documentation (default traits)
         run: |
-          xcrun swift package generate-documentation \
+          swift package \
+            --allow-writing-to-directory .build/docs-default \
+            generate-documentation \
             --target SwiftyChain \
+            --target SwiftyChainTesting \
+            --enable-experimental-combined-documentation \
+            --output-path .build/docs-default \
             --warnings-as-errors \
-            --disable-indexing
+            --transform-for-static-hosting \
+            --hosting-base-path SwiftyChain
 
       - name: Build documentation (all traits)
         run: |
-          xcrun swift package \
+          swift package \
             --traits "${TRAITS}" \
+            --allow-writing-to-directory .build/docs \
             generate-documentation \
             --target SwiftyChain \
-            --warnings-as-errors \
-            --disable-indexing
-
-      - name: Build SwiftyChainTesting documentation (default traits)
-        run: |
-          xcrun swift package generate-documentation \
             --target SwiftyChainTesting \
+            --enable-experimental-combined-documentation \
+            --output-path .build/docs \
             --warnings-as-errors \
-            --disable-indexing
+            --transform-for-static-hosting \
+            --hosting-base-path SwiftyChain
 
-      - name: Build SwiftyChainTesting documentation (all traits)
+      - name: Check documentation contents
         run: |
-          xcrun swift package \
-            --traits "${TRAITS}" \
-            generate-documentation \
-            --target SwiftyChainTesting \
-            --warnings-as-errors \
-            --disable-indexing
+          scripts/check-docs.py .build/docs-default
+          scripts/check-docs.py .build/docs
+
+  linux:
+    name: linux (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 45
+    container: swift:${{ matrix.swift }}-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["6.3.3", "6.4.2"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore SwiftPM caches
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: linux-swift-${{ matrix.swift }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            linux-swift-${{ matrix.swift }}-
+
+      # libsecret is loaded at runtime, so these steps prove the package builds and
+      # fails closed on a machine without it.
+      - name: Build and test without libsecret (default traits)
+        env:
+          SWIFTYCHAIN_EXPECT_NO_LIBSECRET: "1"
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Build and test without libsecret (all traits)
+        run: swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Install the Secret Service runtime
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libsecret-1-0 gnome-keyring dbus-x11 procps
+
+      - name: Test against GNOME Keyring
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION: "1"
+        run: scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Test the timeout against a stopped keyring daemon
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_SECRET_SERVICE_HUNG: "1"
+        run: |
+          scripts/with-gnome-keyring.sh bash -c '
+            pkill -STOP -x gnome-keyring-d
+            swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests
+          '

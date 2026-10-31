@@ -3,7 +3,7 @@
 /// ``Keychain`` conforms to this protocol.
 ///
 /// Declare your feature code against `KeychainProtocol` so tests can inject an
-/// in-memory implementation without touching the real system keychain. The
+/// in-memory implementation without touching the real platform keychain. The
 /// `SwiftyChainTesting` product provides `InMemoryKeychain` for exactly this purpose.
 ///
 /// ```swift
@@ -133,7 +133,7 @@ extension KeychainProtocol {
     }
 #endif
 
-#if Cryptography
+#if Cryptography && canImport(Security)
     /// A keychain that stores `SecKey` references, available with the `cryptography` trait.
     ///
     /// ``Keychain`` and `SwiftyChainTesting.InMemoryKeychain` conform to this protocol.

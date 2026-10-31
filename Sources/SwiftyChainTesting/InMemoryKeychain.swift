@@ -3,8 +3,10 @@ import SwiftyChain
 
 /// An in-memory implementation of `KeychainProtocol` for use in tests.
 ///
-/// `InMemoryKeychain` stores items in dictionaries instead of the system keychain,
+/// `InMemoryKeychain` stores items in memory instead of the system keychain,
 /// so tests run fast, stay isolated, and do not require keychain entitlements.
+/// It runs the same engine as `Keychain`, so lookups, duplicate detection,
+/// and bulk deletes follow the real keychain's rules.
 ///
 /// ## Basic usage
 ///
@@ -38,40 +40,7 @@ import SwiftyChain
 /// When the `cryptography` trait is enabled, `InMemoryKeychain` implements
 /// `saveCryptoKey(_:for:)`, `loadCryptoKey(keyRef:)`, and `deleteCryptoKey(keyRef:)`.
 public actor InMemoryKeychain: KeychainProtocol {
-    private struct GenericPasswordIdentity: Hashable {
-        let service: String
-        let account: String
-        let accessGroup: String?
-        let isSynchronizable: Bool
-    }
-
-    private struct InternetPasswordIdentity: Hashable {
-        let server: String
-        let account: String
-        let port: Int?
-        let path: String?
-        let internetProtocol: InternetProtocol
-        let authenticationType: AuthenticationType
-        let accessGroup: String?
-    }
-
-    private struct GenericPasswordRecord: Sendable {
-        let data: Data
-        let accessibility: KeychainAccessibility
-        let label: String?
-        let comment: String?
-    }
-
-    private struct InternetPasswordRecord: Sendable {
-        let password: String
-        let accessibility: KeychainAccessibility
-    }
-
-    private var genericPasswords: [GenericPasswordIdentity: GenericPasswordRecord] = [:]
-    private var internetPasswords: [InternetPasswordIdentity: InternetPasswordRecord] = [:]
-    #if Observation
-        private var observers: [UUID: Observer] = [:]
-    #endif
+    private let engine = KeychainEngine(backend: InMemoryStorageBackend())
 
     /// Creates a new, empty in-memory keychain.
     public init() {}
@@ -80,69 +49,26 @@ public actor InMemoryKeychain: KeychainProtocol {
     ///
     /// - Throws: `KeychainError.duplicateItem` if an item with the same identity already exists.
     public func save<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        let identity = GenericPasswordIdentity(
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable
-        )
-        if genericPasswords[identity] != nil {
-            throw KeychainError.duplicateItem
-        }
-        genericPasswords[identity] = GenericPasswordRecord(
-            data: try value.keychainData(),
-            accessibility: key.accessibility,
-            label: key.label,
-            comment: key.comment
-        )
-        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
+        try engine.save(value, for: key)
     }
 
     /// Loads an existing item.
     ///
     /// - Throws: `KeychainError.itemNotFound` if no item matches `key`.
     public func load<T: KeychainStorable>(key: KeychainKey<T>) throws -> T {
-        let identity = GenericPasswordIdentity(
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable
-        )
-        guard let record = genericPasswords[identity] else {
-            throw KeychainError.itemNotFound
-        }
-        return try T.fromKeychainData(record.data)
+        try engine.load(key: key)
     }
 
     /// Loads an item, returning `nil` if it does not exist.
     public func loadIfPresent<T: KeychainStorable>(key: KeychainKey<T>) throws -> T? {
-        do {
-            return try load(key: key)
-        } catch KeychainError.itemNotFound {
-            return nil
-        }
+        try engine.loadIfPresent(key: key)
     }
 
     /// Replaces an existing item.
     ///
     /// - Throws: `KeychainError.itemNotFound` if no item matching `key` exists.
     public func update<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        let identity = GenericPasswordIdentity(
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable
-        )
-        guard genericPasswords[identity] != nil else {
-            throw KeychainError.itemNotFound
-        }
-        genericPasswords[identity] = GenericPasswordRecord(
-            data: try value.keychainData(),
-            accessibility: key.accessibility,
-            label: key.label,
-            comment: key.comment
-        )
-        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .updated)
+        try engine.update(value, for: key)
     }
 
     /// Saves or replaces an item in a single call.
@@ -150,23 +76,12 @@ public actor InMemoryKeychain: KeychainProtocol {
     /// This is the recommended write method for most tests — it creates the item if
     /// absent, or updates it if already present.
     public func upsert<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        do {
-            try save(value, for: key)
-        } catch KeychainError.duplicateItem {
-            try update(value, for: key)
-        }
+        try engine.upsert(value, for: key)
     }
 
     /// Removes an item. This is a no-op if the item does not exist.
     public func delete<T: KeychainStorable>(key: KeychainKey<T>) throws {
-        let identity = GenericPasswordIdentity(
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable
-        )
-        genericPasswords.removeValue(forKey: identity)
-        notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
+        try engine.delete(key: key)
     }
 
     /// Removes all generic-password items stored under `service`.
@@ -181,95 +96,36 @@ public actor InMemoryKeychain: KeychainProtocol {
 
     /// Removes all items matching a structured query.
     public func deleteAllItems(matching query: KeychainDeleteQuery) throws {
-        if query.itemClass == .genericPassword {
-            genericPasswords = genericPasswords.filter { key, _ in
-                !matchesGenericPassword(key, query: query)
-            }
-        } else if query.itemClass == .internetPassword {
-            internetPasswords = internetPasswords.filter { key, _ in
-                !matchesInternetPassword(key, query: query)
-            }
-        }
-        if let service = query.service {
-            notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
-        }
+        try engine.deleteAllItems(matching: query)
     }
 
     /// Returns `true` if an item exists for `key`, without loading its value.
     public func exists<T: KeychainStorable>(key: KeychainKey<T>) throws -> Bool {
-        let identity = GenericPasswordIdentity(
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable
-        )
-        return genericPasswords[identity] != nil
+        try engine.exists(key: key)
     }
 
     /// Returns all account names stored under `service`.
     public func allAccounts(service: String, accessGroup: String? = nil) throws -> [String] {
-        genericPasswords.keys.compactMap { key in
-            guard key.service == service else { return nil }
-            guard accessGroup == nil || key.accessGroup == accessGroup else { return nil }
-            return key.account
-        }
+        try engine.allAccounts(service: service, accessGroup: accessGroup)
     }
 
     /// Saves an internet password.
     ///
     /// - Throws: `KeychainError.duplicateItem` if an item with the same identity already exists.
     public func saveInternetPassword(_ password: String, for key: InternetPasswordKey) throws {
-        let identity = InternetPasswordIdentity(
-            server: key.server,
-            account: key.account,
-            port: key.port,
-            path: key.path,
-            internetProtocol: key.protocol,
-            authenticationType: key.authenticationType,
-            accessGroup: key.accessGroup
-        )
-        if internetPasswords[identity] != nil {
-            throw KeychainError.duplicateItem
-        }
-        internetPasswords[identity] = InternetPasswordRecord(
-            password: password,
-            accessibility: key.accessibility
-        )
-        notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
+        try engine.saveInternetPassword(password, for: key)
     }
 
     /// Loads an internet password.
     ///
     /// - Throws: `KeychainError.itemNotFound` if no matching item exists.
     public func loadInternetPassword(for key: InternetPasswordKey) throws -> String {
-        let identity = InternetPasswordIdentity(
-            server: key.server,
-            account: key.account,
-            port: key.port,
-            path: key.path,
-            internetProtocol: key.protocol,
-            authenticationType: key.authenticationType,
-            accessGroup: key.accessGroup
-        )
-        guard let record = internetPasswords[identity] else {
-            throw KeychainError.itemNotFound
-        }
-        return record.password
+        try engine.loadInternetPassword(for: key)
     }
 
     /// Removes an internet password.
     public func deleteInternetPassword(for key: InternetPasswordKey) throws {
-        let identity = InternetPasswordIdentity(
-            server: key.server,
-            account: key.account,
-            port: key.port,
-            path: key.path,
-            internetProtocol: key.protocol,
-            authenticationType: key.authenticationType,
-            accessGroup: key.accessGroup
-        )
-        internetPasswords.removeValue(forKey: identity)
-        notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
+        try engine.deleteInternetPassword(for: key)
     }
 
     #if Observation
@@ -282,108 +138,36 @@ public actor InMemoryKeychain: KeychainProtocol {
             service: String,
             accessGroup: String? = nil
         ) -> AsyncStream<KeychainChangeEvent> {
-            let id = UUID()
-            return AsyncStream { continuation in
-                observers[id] = Observer(service: service, accessGroup: accessGroup, continuation: continuation)
-                continuation.onTermination = { [weak self] _ in
-                    Task { await self?.removeObserver(id: id) }
-                }
-            }
+            engine.observeKeychainChanges(service: service, accessGroup: accessGroup)
         }
-
-        private struct Observer: Sendable {
-            let service: String
-            let accessGroup: String?
-            let continuation: AsyncStream<KeychainChangeEvent>.Continuation
-        }
-
-        private func removeObserver(id: UUID) {
-            observers.removeValue(forKey: id)
-        }
-
-        private enum MutationKind: Sendable {
-            case saved
-            case updated
-            case deleted
-            case bulkDeleted
-        }
-
-        private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {
-            let eventKind: KeychainChangeEvent.Kind =
-                switch kind {
-                case .saved: .saved
-                case .updated: .updated
-                case .deleted: .deleted
-                case .bulkDeleted: .bulkDeleted
-                }
-            let event = KeychainChangeEvent(service: service, account: account, kind: eventKind)
-            for observer in observers.values
-            where observer.service == service
-                && (observer.accessGroup == nil || observer.accessGroup == accessGroup)
-            {
-                observer.continuation.yield(event)
-            }
-        }
-    #else
-        private enum MutationKind: Sendable {
-            case saved
-            case updated
-            case deleted
-            case bulkDeleted
-        }
-
-        private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {}
     #endif
 
-    #if Cryptography
-        private var cryptoKeys: [CryptoKeyReference<StoredSecKey>: StoredSecKey] = [:]
-
+    #if Cryptography && canImport(Security)
         /// Saves a cryptographic key.
         ///
         /// Replaces any previously saved key for the same `keyRef`.
         public func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
-            cryptoKeys[keyRef] = key
+            try engine.saveCryptoKey(key, for: keyRef)
         }
 
         /// Loads a cryptographic key.
         ///
         /// - Throws: `KeychainError.itemNotFound` if no key matching `keyRef` was saved.
         public func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey {
-            guard let key = cryptoKeys[keyRef] else {
-                throw KeychainError.itemNotFound
-            }
-            return key
+            try engine.loadCryptoKey(keyRef: keyRef)
         }
 
         /// Removes a cryptographic key.
         public func deleteCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws {
-            cryptoKeys.removeValue(forKey: keyRef)
+            try engine.deleteCryptoKey(keyRef: keyRef)
         }
     #endif
-
-    private func matchesGenericPassword(_ key: GenericPasswordIdentity, query: KeychainDeleteQuery) -> Bool {
-        if let service = query.service, key.service != service { return false }
-        if let accessGroup = query.accessGroup, key.accessGroup != accessGroup { return false }
-        if query.onlySynchronizable {
-            return key.isSynchronizable
-        }
-        if query.includeSynchronizable {
-            return true
-        }
-        return key.isSynchronizable == false
-    }
-
-    private func matchesInternetPassword(_ key: InternetPasswordIdentity, query: KeychainDeleteQuery) -> Bool {
-        if let service = query.service, key.server != service { return false }
-        if let accessGroup = query.accessGroup, key.accessGroup != accessGroup { return false }
-        return query.includeSynchronizable || query.onlySynchronizable == false
-    }
 }
 
 #if Observation
     extension InMemoryKeychain: KeychainObserving {}
 #endif
 
-#if Cryptography
+#if Cryptography && canImport(Security)
     extension InMemoryKeychain: KeychainCryptoStoring {}
 #endif

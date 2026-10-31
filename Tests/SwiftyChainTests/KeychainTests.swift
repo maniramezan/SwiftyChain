@@ -47,13 +47,3 @@ func keychainKeyGenericPasswordBuilderSetsFields() {
     #expect(key.accessibility == .afterFirstUnlock)
     #expect(key.isSynchronizable)
 }
-
-@Test
-func keychainAccessibilitySecValuesAreDistinctForRepresentativeCases() {
-    #expect(KeychainAccessibility.afterFirstUnlock.secValue as String != "")
-    #expect(KeychainAccessibility.afterFirstUnlock.secValue != KeychainAccessibility.whenUnlocked.secValue)
-    #expect(
-        KeychainAccessibility.whenUnlockedThisDeviceOnly.secValue
-            != KeychainAccessibility.whenPasscodeSetThisDeviceOnly.secValue
-    )
-}

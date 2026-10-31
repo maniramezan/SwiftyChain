@@ -4,7 +4,7 @@ Store and load your first keychain value in minutes.
 
 ## Overview
 
-SwiftyChain replaces the raw `SecItem*` C API with three building blocks:
+SwiftyChain replaces the raw platform keychain APIs (`SecItem*` on Apple platforms, libsecret on Linux) with three building blocks:
 
 - **``KeychainKey``** — a typed descriptor that identifies a keychain item.
 - **``Keychain``** — an `actor` that performs thread-safe CRUD operations.
@@ -98,4 +98,5 @@ try await Keychain.shared.deleteAll(service: "com.example.app")
 - **Internet passwords** — Store credentials associated with a server and protocol. See <doc:InternetPasswords>.
 - **SwiftUI** — Use ``KeychainStorage`` for optional values. For non-optional access, use `@KeychainItem`. See <doc:SwiftyChainKeychainStorage> and <doc:UsingMacros>.
 - **Macros** — Reduce boilerplate with `@KeychainItem` and `@KeychainScope`. See <doc:UsingMacros>.
-- **iCloud sync** — Set `isSynchronizable: true` on a ``KeychainKey`` to sync the value across the user's devices via iCloud Keychain.
+- **iCloud sync** — Set `isSynchronizable: true` on a ``KeychainKey`` to sync the value across the user's devices via iCloud Keychain (Apple platforms only).
+- **Linux** — The same code stores secrets in GNOME Keyring or KWallet. See <doc:Linux>.

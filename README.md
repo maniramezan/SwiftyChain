@@ -3,11 +3,11 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/maniramezan/SwiftyChain/ci.yml?branch=main&label=CI&logo=github)](https://github.com/maniramezan/SwiftyChain/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-GitHub_Pages-0969da?logo=github)](https://maniramezan.github.io/SwiftyChain/)
 [![Swift](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/platforms-iOS%2018%20%7C%20macOS%2015%20%7C%20tvOS%2018%20%7C%20watchOS%2011%20%7C%20visionOS%202-blue)](https://github.com/maniramezan/SwiftyChain/blob/main/Package.swift)
+[![Platforms](https://img.shields.io/badge/platforms-iOS%2018%20%7C%20macOS%2015%20%7C%20tvOS%2018%20%7C%20watchOS%2011%20%7C%20visionOS%202%20%7C%20Linux-blue)](https://github.com/maniramezan/SwiftyChain/blob/main/Package.swift)
 [![SPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
 [![License](https://img.shields.io/badge/license-MIT-brightgreen)](LICENSE)
 
-SwiftyChain is a Swift 6.3 keychain wrapper for Apple platforms. It provides a typed `Keychain` actor for async-safe access and an `@KeychainStorage` property wrapper for simple optional values.
+SwiftyChain is a Swift 6.3 keychain wrapper for Apple platforms and Linux. It provides a typed `Keychain` actor for async-safe access and an `@KeychainStorage` property wrapper for simple optional values. The same code stores secrets in the Apple Keychain or, on Linux, in the Secret Service (GNOME Keyring or KWallet).
 
 ## Installation
 
@@ -15,7 +15,7 @@ Add SwiftyChain to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/maniramezan/SwiftyChain", from: "1.0.0"),
+    .package(url: "https://github.com/maniramezan/SwiftyChain", from: "2.0.0"),
 ],
 targets: [
     .target(
@@ -72,8 +72,37 @@ Use the optional arguments only when needed:
 | watchOS   | 11.0+      |
 | tvOS      | 18.0+      |
 | visionOS  | 2.0+       |
+| Linux     | Any distribution with Swift 6.3+; libsecret 0.19+ at runtime |
 
 > **tvOS note**: `whenPasscodeSetThisDeviceOnly` accessibility is unavailable on tvOS. The `#keychainKey` macro emits a warning if you use it on that platform.
+
+### Linux
+
+On Linux, `Keychain.shared` and `@KeychainStorage` store secrets in the freedesktop
+Secret Service through libsecret. Nothing extra is needed to build. At runtime the
+machine needs:
+
+- libsecret (`libsecret-1-0` on Debian and Ubuntu, `libsecret` on Fedora), and
+- a D-Bus session with a Secret Service provider, such as GNOME Keyring or KWallet.
+
+If any of these is missing, every call throws `KeychainError.platformUnsupported` with
+the reason. SwiftyChain never falls back to plaintext. Headless servers usually have no
+Secret Service; use a secret manager there instead.
+
+Behavior that differs from Apple platforms:
+
+| Option | On Linux |
+|--------|----------|
+| `isSynchronizable: true` | Throws `platformUnsupported` |
+| `accessGroup` | Stored as an attribute; namespaces items but doesn't isolate them |
+| `accessibility`, `comment` | Not stored |
+| `cryptography` trait | Unavailable (it stores Apple `SecKey` values) |
+| Unresponsive keyring or unanswered unlock prompt | Throws `KeychainError.timedOut` after 30 seconds |
+
+> **Isolation**: Linux has no per-app keychain permissions. Once the keyring is unlocked,
+> any program running as the same user can read its items, including SwiftyChain's.
+> Apps distributed as Flatpak or Snap get per-app storage automatically: libsecret keeps
+> their secrets in an app-private file encrypted with a key from the Secret portal.
 
 ## Traits
 
@@ -81,7 +110,7 @@ The Swift macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are include
 
 | Trait | Feature | Enable when |
 |-------|---------|-------------|
-| `cryptography` | `kSecClassKey` support — store, load, and manage `SecKey` objects | You need to sign/verify data or work with cryptographic keys |
+| `cryptography` | `kSecClassKey` support — store, load, and manage `SecKey` objects (Apple platforms only) | You need to sign/verify data or work with cryptographic keys |
 | `observation` | `AsyncSequence`-based keychain change stream + `@Observable` integration | You need to react to keychain changes in real time |
 
 Enable traits in your consuming `Package.swift`:
@@ -145,3 +174,13 @@ xcrun swift test --traits "observation,cryptography"
 ```
 
 Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain.
+
+On Linux, run the same suite against GNOME Keyring. The helper script starts a private
+D-Bus session, unlocks a keyring, waits until it's ready, and stops the daemons afterwards
+(needs `libsecret-1-0`, `gnome-keyring`, `dbus-x11`, and `procps`):
+
+```bash
+SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION=1 scripts/with-gnome-keyring.sh swift test
+```
+
+To try Linux from a Mac, run the same commands in the `swift:6.3.3-noble` Docker image.

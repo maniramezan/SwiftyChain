@@ -26,10 +26,13 @@ public struct KeychainKey<Value: KeychainStorable>: Sendable, Hashable {
     /// The account attribute that distinguishes items within a service.
     public let account: String
     /// The access group for sharing items across apps, or `nil` for the app's default group.
+    ///
+    /// On Linux the access group is stored as an attribute that scopes lookups; it doesn't
+    /// restrict which programs can read the item.
     public let accessGroup: String?
     /// The accessibility policy that controls when this item can be read.
     public let accessibility: KeychainAccessibility
-    /// Whether this item is synchronized to iCloud Keychain.
+    /// Whether this item is synchronized to iCloud Keychain (Apple platforms only).
     public let isSynchronizable: Bool
     /// An optional human-readable label for the item displayed in Keychain Access.
     public let label: String?
@@ -44,6 +47,7 @@ public struct KeychainKey<Value: KeychainStorable>: Sendable, Hashable {
     ///   - accessGroup: The access group for sharing items across apps. Defaults to `nil`.
     ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
+    ///     Apple platforms only; on Linux, `true` makes operations throw ``KeychainError/platformUnsupported(_:)``.
     ///   - label: A human-readable label for the item. Defaults to `nil`.
     ///   - comment: A human-readable comment for the item. Defaults to `nil`.
     public init(
