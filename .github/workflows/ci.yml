@@ -143,37 +143,39 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-${{ env.DOCS_SWIFT_VERSION }}-swiftpm-docs-
 
+      # Builds the same combined archive the Pages deploy publishes, so a broken
+      # site fails the pull request instead of the deploy.
       - name: Build documentation (default traits)
         run: |
-          swift package generate-documentation \
+          swift package \
+            --allow-writing-to-directory .build/docs-default \
+            generate-documentation \
             --target SwiftyChain \
+            --target SwiftyChainTesting \
+            --enable-experimental-combined-documentation \
+            --output-path .build/docs-default \
             --warnings-as-errors \
-            --disable-indexing
+            --transform-for-static-hosting \
+            --hosting-base-path SwiftyChain
 
       - name: Build documentation (all traits)
         run: |
           swift package \
             --traits "${TRAITS}" \
+            --allow-writing-to-directory .build/docs \
             generate-documentation \
             --target SwiftyChain \
-            --warnings-as-errors \
-            --disable-indexing
-
-      - name: Build SwiftyChainTesting documentation (default traits)
-        run: |
-          swift package generate-documentation \
             --target SwiftyChainTesting \
+            --enable-experimental-combined-documentation \
+            --output-path .build/docs \
             --warnings-as-errors \
-            --disable-indexing
+            --transform-for-static-hosting \
+            --hosting-base-path SwiftyChain
 
-      - name: Build SwiftyChainTesting documentation (all traits)
+      - name: Check documentation contents
         run: |
-          swift package \
-            --traits "${TRAITS}" \
-            generate-documentation \
-            --target SwiftyChainTesting \
-            --warnings-as-errors \
-            --disable-indexing
+          scripts/check-docs.py .build/docs-default
+          scripts/check-docs.py .build/docs
 
   linux:
     name: linux (Swift ${{ matrix.swift }})

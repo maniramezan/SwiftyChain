@@ -71,13 +71,11 @@ let package = Package(
                 .target(name: "SwiftyChainSecretService", condition: .when(platforms: [.linux])),
                 .target(name: "SwiftyChainMacros"),
             ],
-            exclude: ["Documentation.docc"],
             swiftSettings: traitDefines
         ),
         .target(
             name: "SwiftyChainTesting",
             dependencies: ["SwiftyChain"],
-            exclude: ["Documentation.docc"],
             swiftSettings: traitDefines
         ),
         .macro(
