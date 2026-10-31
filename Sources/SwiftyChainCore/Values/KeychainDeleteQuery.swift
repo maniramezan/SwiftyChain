@@ -66,6 +66,8 @@ public struct KeychainDeleteQuery: Sendable, Hashable {
 
     /// Creates a query that matches only iCloud-synchronized items for a service.
     ///
+    /// Using this query on Linux throws ``KeychainError/platformUnsupported(_:)``.
+    ///
     /// Non-synchronizable items are left untouched.
     ///
     /// - Parameters:

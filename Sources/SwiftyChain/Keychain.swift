@@ -3,7 +3,7 @@ import Foundation
 /// Actor-isolated public API for keychain operations.
 ///
 /// ``Keychain`` provides a type-safe interface for storing, loading, updating,
-/// and deleting items in the system keychain. All mutations are serialized through
+/// and deleting items in the platform keychain. All mutations are serialized through
 /// Swift's actor model, making it safe to call from any concurrency context.
 ///
 /// ## Getting started
@@ -171,6 +171,8 @@ public actor Keychain: KeychainProtocol {
     }
 
     /// Deletes only iCloud-synchronized generic-password items for a service.
+    ///
+    /// On Linux, which has no synchronizable items, this throws ``KeychainError/platformUnsupported(_:)``.
     ///
     /// Items that are not synchronizable are left untouched.
     ///

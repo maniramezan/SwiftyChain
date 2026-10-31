@@ -1,12 +1,12 @@
 # ``SwiftyChainTesting``
 
-Test keychain-dependent code without touching the real Apple keychain.
+Test keychain-dependent code without touching the real platform keychain.
 
 ## Overview
 
 `SwiftyChainTesting` is a companion product for `SwiftyChain` that ships two in-memory
 test doubles. Add it to your test targets to run fast, isolated keychain tests that
-require no entitlements and leave no items behind in the system keychain.
+require no entitlements and leave no items behind in the platform keychain.
 
 ```swift
 .testTarget(

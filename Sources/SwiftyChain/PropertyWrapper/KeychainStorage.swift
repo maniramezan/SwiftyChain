@@ -41,6 +41,7 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
     ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
+    ///     Apple platforms only; on Linux, `true` makes operations throw ``KeychainError/platformUnsupported(_:)``.
     public init(
         _ account: String,
         service: String,
