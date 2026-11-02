@@ -33,6 +33,10 @@ package protocol SecureStorageBackend: Sendable {
 
 /// Optional features a ``SecureStorageBackend`` supports beyond the core
 /// generic-password operations.
+///
+/// `KeychainAccessibility` is deliberately not a capability: it only narrows when an
+/// item is readable, so a backend that can't honor it — Linux's Secret Service —
+/// ignores it instead of failing, matching ``KeychainAccessibility``'s documentation.
 package struct SecureStorageCapabilities: OptionSet, Sendable, Hashable {
     package let rawValue: UInt8
 
@@ -44,18 +48,15 @@ package struct SecureStorageCapabilities: OptionSet, Sendable, Hashable {
     package static let synchronizable = SecureStorageCapabilities(rawValue: 1 << 0)
     /// Items can be scoped to an access group.
     package static let accessGroups = SecureStorageCapabilities(rawValue: 1 << 1)
-    /// The backend enforces ``KeychainAccessibility``. Without it the policy is ignored.
-    package static let accessibility = SecureStorageCapabilities(rawValue: 1 << 2)
     /// The backend stores internet passwords.
-    package static let internetPasswords = SecureStorageCapabilities(rawValue: 1 << 3)
+    package static let internetPasswords = SecureStorageCapabilities(rawValue: 1 << 2)
     /// The backend stores cryptographic keys.
-    package static let cryptoKeys = SecureStorageCapabilities(rawValue: 1 << 4)
+    package static let cryptoKeys = SecureStorageCapabilities(rawValue: 1 << 3)
 
     /// Every capability, for backends with full Apple Keychain semantics.
     package static let all: SecureStorageCapabilities = [
         .synchronizable,
         .accessGroups,
-        .accessibility,
         .internetPasswords,
         .cryptoKeys,
     ]

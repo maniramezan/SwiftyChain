@@ -5,17 +5,38 @@
 # Usage: scripts/with-gnome-keyring.sh swift test
 #
 # Needs libsecret-1-0, gnome-keyring, dbus-x11, and procps (or your distribution's
-# equivalents). The keyring daemons started here are stopped when the command exits,
-# even if the command froze them.
+# equivalents). Only the keyring daemons this script starts are stopped when the
+# command exits — even if the command froze them — so a desktop session's own
+# keyring daemon is never touched.
 set -euo pipefail
 
 if [ -z "${SWIFTYCHAIN_KEYRING_SESSION:-}" ]; then
     exec env SWIFTYCHAIN_KEYRING_SESSION=1 dbus-run-session -- "$0" "$@"
 fi
 
+# pkill/pgrep match the process comm name, which the kernel truncates to
+# 15 characters: gnome-keyring-d.
+snap_daemon_pids() {
+    pgrep -x gnome-keyring-d | sort -u || true
+}
+
+daemon_pids_on_entry="$(snap_daemon_pids)"
+
+# Lists the daemons started under this script: the ones present now that were
+# not there when the script entered.
+new_daemon_pids() {
+    comm -13 <(printf '%s\n' "${daemon_pids_on_entry[@]}" | sort -u) <(snap_daemon_pids)
+}
+
 stop_keyring() {
-    pkill -CONT -u "$(id -u)" -x gnome-keyring-d || true
-    pkill -TERM -u "$(id -u)" -x gnome-keyring-d || true
+    local pids
+    pids="$(new_daemon_pids)"
+    if [ -z "$pids" ]; then
+        return
+    fi
+    # The CI timeout test freezes its daemon with SIGSTOP; resume it so it can exit.
+    xargs -r kill -CONT <<< "$pids" 2>/dev/null || true
+    xargs -r kill <<< "$pids" 2>/dev/null || true
 }
 trap stop_keyring EXIT
 

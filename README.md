@@ -98,6 +98,7 @@ Behavior that differs from Apple platforms:
 | `accessibility`, `comment` | Not stored |
 | `cryptography` trait | Unavailable (it stores Apple `SecKey` values) |
 | Unresponsive keyring or unanswered unlock prompt | Throws `KeychainError.timedOut` after 30 seconds |
+| Two processes saving the same item | Last write wins; Apple throws `duplicateItem` for the second save |
 
 > **Isolation**: Linux has no per-app keychain permissions. Once the keyring is unlocked,
 > any program running as the same user can read its items, including SwiftyChain's.

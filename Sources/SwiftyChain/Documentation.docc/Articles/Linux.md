@@ -47,6 +47,12 @@ in plaintext or in memory.
 Values are stored as binary data with no size limit, so every ``KeychainStorable`` type
 round-trips exactly.
 
+Concurrent saves of the same item behave differently: within one process the ``Keychain``
+actor serializes calls, but separate processes race. On Apple, the second `save` throws
+``KeychainError/duplicateItem``. On Linux, each write replaces the item in the keyring,
+so the last one wins. Calls from the same ``Keychain`` instance never race; ``upsert``
+avoids the issue everywhere.
+
 ### Unlock prompts and timeouts
 
 If the keyring is locked, the Secret Service asks the user to unlock it, and the call waits
@@ -79,3 +85,10 @@ SwiftyChain stores items under its own schemas (`dev.manman.SwiftyChain.GenericP
 On Linux, SwiftyChain logs through [swift-log](https://github.com/apple/swift-log) with
 labels starting with `dev.manman.SwiftyChain`. Service, account, and server names are never
 logged in clear text.
+
+Failures you receive as errors — including ``KeychainError/platformUnsupported(_:)`` for a
+missing libsecret, D-Bus session, or Secret Service provider — are logged at debug level,
+because the thrown error is the primary signal your code acts on. Only platform faults
+(`KeychainError/unexpectedData` and `KeychainError/operationFailed(_:)`) are logged as
+errors. If debugging a missing keyring setup, turn debug logging on for the
+`dev.manman.SwiftyChain` labels.

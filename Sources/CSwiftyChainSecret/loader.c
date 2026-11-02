@@ -209,8 +209,11 @@ const char *swiftychain_secret_schema_attribute_name(swiftychain_secret_schema_k
     return schema_for(kind)->attributes[index].name;
 }
 
-int swiftychain_secret_session_bus_available(swiftychain_secret_error **error) {
-    void *connection = fn.bus_get_sync(BUS_TYPE_SESSION, NULL, error);
+int swiftychain_secret_session_bus_available(
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+) {
+    void *connection = fn.bus_get_sync(BUS_TYPE_SESSION, cancellable, error);
     if (connection == NULL) {
         return 0;
     }

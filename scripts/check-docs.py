@@ -40,8 +40,14 @@ INTERNAL_NAMES = [
 
 
 def main() -> int:
+    if len(sys.argv) != 2:
+        print(__doc__, file=sys.stderr)
+        return 2
     root = sys.argv[1]
     data = os.path.join(root, "data")
+    if not os.path.isdir(data):
+        print(f"::error::{root} is not a DocC archive or generated site directory")
+        return 2
     problems = []
 
     for page in REQUIRED_PAGES:
@@ -53,16 +59,22 @@ def main() -> int:
 
     landing = os.path.join(data, "documentation", "swiftychain.json")
     if os.path.exists(landing):
-        groups = [s.get("title") for s in json.load(open(landing)).get("topicSections", [])]
+        with open(landing) as file:
+            groups = [s.get("title") for s in json.load(file).get("topicSections", [])]
         for group in REQUIRED_TOPIC_GROUPS:
             if group not in groups:
                 problems.append(f"landing page is missing curated topic group '{group}' (found {groups})")
 
     for path in glob.glob(os.path.join(data, "**", "*.json"), recursive=True):
         relative = os.path.relpath(path, data).lower()
-        if any(name in relative for name in INTERNAL_NAMES):
+        # Match the page file's name only, so a directory name (for example a future
+        # folder for a module) can never count as an internal symbol leaking.
+        stem = os.path.splitext(os.path.basename(path))[0].lower()
+        if any(name in stem for name in INTERNAL_NAMES):
             problems.append(f"package-internal symbol documented: {relative}")
-        for key, reference in json.load(open(path)).get("references", {}).items():
+        with open(path) as file:
+            references = json.load(file).get("references", {})
+        for key, reference in references.items():
             if "SwiftyChain" in key and reference.get("type") == "topic" and not reference.get("url"):
                 problems.append(f"reference without destination in {relative}: {key}")
 

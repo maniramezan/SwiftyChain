@@ -28,9 +28,9 @@ update, and delete. They share these rules:
 - Deleting removes every matching item and succeeds when nothing matches.
 - Platform diagnostics are logged, never carried in the thrown error.
 
-Each backend also declares its capabilities: synchronizable items, access groups,
-accessibility policies, internet passwords, and cryptographic keys. Before any call
-reaches a backend, the engine checks the query against those capabilities in one place.
+Each backend also declares its capabilities: synchronizable items, access groups, internet
+passwords, and cryptographic keys. Before any call reaches a backend, the engine checks the
+query against those capabilities in one place.
 An option the platform can't honor fails with ``KeychainError/platformUnsupported(_:)``,
 worded the same way on every platform, instead of being silently ignored. Accessibility
 is the one option a backend may ignore, because it only narrows when an item is readable.

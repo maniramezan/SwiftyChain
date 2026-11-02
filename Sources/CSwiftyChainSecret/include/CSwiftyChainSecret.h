@@ -37,7 +37,10 @@ const char *swiftychain_secret_schema_name(swiftychain_secret_schema_kind kind);
 const char *swiftychain_secret_schema_attribute_name(swiftychain_secret_schema_kind kind, int index);
 
 /* Returns 1 when a D-Bus session bus is reachable, otherwise 0 and sets error. */
-int swiftychain_secret_session_bus_available(swiftychain_secret_error **error);
+int swiftychain_secret_session_bus_available(
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+);
 
 swiftychain_secret_attributes *swiftychain_secret_attributes_new(void);
 void swiftychain_secret_attributes_insert(swiftychain_secret_attributes *attributes, const char *key, const char *value);

@@ -114,12 +114,17 @@
             _ body: (OpaquePointer?, inout OpaquePointer?) throws -> Result
         ) throws -> Result {
             try callLock.withLock { _ in
-                try ensureAvailable()
+                // The library must load before anything below it, because every GLib and
+                // libsecret call dereferences symbols resolved by dlopen. Then the timer
+                // is created, so every GLib call after it — including the D-Bus
+                // session-handshake in `ensureSessionBus` — respects the timeout.
+                try ensureLibraryLoaded()
+                let timer = TimeoutTimer(after: timeout)
+                defer { timer.disarm() }
+                try ensureSessionBus(cancellable: timer.cancellable)
                 SwiftyChainLoggers.backend.debug(
                     "libsecret \(operation, privacy: .public) started for schema=\(schema.name, privacy: .public)"
                 )
-                let timer = TimeoutTimer(after: timeout)
-                defer { timer.disarm() }
                 var error: OpaquePointer?
                 do {
                     let result = try body(timer.cancellable, &error)
@@ -143,7 +148,7 @@
             }
         }
 
-        private func ensureAvailable() throws {
+        private func ensureLibraryLoaded() throws {
             switch swiftychain_secret_load() {
             case SWIFTYCHAIN_SECRET_LOADED:
                 break
@@ -154,8 +159,11 @@
                 SwiftyChainLoggers.backend.debug("libsecret-1.so.0 could not be loaded")
                 throw SecretServiceUnavailability.libraryMissing.error
             }
+        }
+
+        private func ensureSessionBus(cancellable: OpaquePointer?) throws {
             var error: OpaquePointer?
-            if swiftychain_secret_session_bus_available(&error) == 0 {
+            if swiftychain_secret_session_bus_available(cancellable, &error) == 0 {
                 if let error {
                     swiftychain_secret_error_free(error)
                 }
@@ -231,8 +239,10 @@
     }
 
     /// Cancels a `GCancellable` when the timeout elapses, unless disarmed first.
-    // `@unchecked Sendable`: GCancellable is documented as thread-safe, the pointer is
-    // released only in deinit, and `workItem` is touched only by the thread that owns the timer.
+    // `@unchecked Sendable`: GCancellable is documented as thread-safe. The fire block
+    // retains the timer until it has finished cancelling, so `deinit` can never free
+    // the cancellable while a concurrent cancel still references it, and `workItem` is
+    // touched only by the thread that owns the timer.
     private final class TimeoutTimer: @unchecked Sendable {
         let cancellable: OpaquePointer?
         private let didFire = Atomic(false)
@@ -244,10 +254,9 @@
             cancellable = swiftychain_secret_cancellable_new()
             let components = timeout.components
             let nanoseconds = components.seconds * 1_000_000_000 + components.attoseconds / 1_000_000_000
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                didFire.store(true, ordering: .releasing)
-                if let cancellable {
+            let workItem = DispatchWorkItem {
+                self.didFire.store(true, ordering: .releasing)
+                if let cancellable = self.cancellable {
                     swiftychain_secret_cancellable_cancel(cancellable)
                 }
             }
