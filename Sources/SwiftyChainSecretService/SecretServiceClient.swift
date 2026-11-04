@@ -55,7 +55,13 @@
                 try withAttributes(query.attributes) { attributes in
                     let value = swiftychain_secret_lookup(query.schema.kind, attributes, cancellable, &error)
                     try throwIfFailed(error)
-                    guard let value else { return nil }
+                    guard let value else {
+                        if try hasMatchingItems(query, attributes: attributes, unlock: false, cancellable: cancellable)
+                        {
+                            throw KeychainError.userPresenceRequired
+                        }
+                        return nil
+                    }
                     defer { swiftychain_secret_value_free(value) }
                     return copySecret(value)
                 }
@@ -68,6 +74,7 @@
                     let list = swiftychain_secret_search(
                         query.schema.kind,
                         attributes,
+                        1,
                         loadSecrets ? 1 : 0,
                         cancellable,
                         &error
@@ -101,11 +108,35 @@
         package func clear(_ query: SecretServiceItemQuery) throws -> Bool {
             try perform("clear", schema: query.schema) { cancellable, error in
                 try withAttributes(query.attributes) { attributes in
+                    guard try hasMatchingItems(query, attributes: attributes, unlock: true, cancellable: cancellable)
+                    else {
+                        return false
+                    }
                     let removed = swiftychain_secret_clear(query.schema.kind, attributes, cancellable, &error)
                     try throwIfFailed(error)
+                    if try hasMatchingItems(query, attributes: attributes, unlock: false, cancellable: cancellable) {
+                        throw KeychainError.userPresenceRequired
+                    }
                     return removed != 0
                 }
             }
+        }
+
+        private func hasMatchingItems(
+            _ query: SecretServiceItemQuery,
+            attributes: OpaquePointer,
+            unlock: Bool,
+            cancellable: OpaquePointer?
+        ) throws -> Bool {
+            var error: OpaquePointer?
+            let items = swiftychain_secret_search(query.schema.kind, attributes, unlock ? 1 : 0, 0, cancellable, &error)
+            defer {
+                if let items {
+                    swiftychain_secret_list_free(items)
+                }
+            }
+            try throwIfFailed(error)
+            return items != nil
         }
 
         private func perform<Result: Sendable>(

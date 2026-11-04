@@ -224,6 +224,27 @@ struct BackendContractTests {
         #expect(unscoped)
     }
 
+    #if os(Linux) && Cryptography
+        @Test(.enabled(if: ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION"] == "1"))
+        func cryptoDeletionCannotSelectLinuxPasswords() async throws {
+            let keychain = Keychain()
+            let key = KeychainKey<String>(service: uniqueService(), account: "kept")
+            try await keychain.save("secret", for: key)
+
+            await #expect(
+                throws: KeychainError.platformUnsupported(
+                    "Cryptographic keys are not supported by this keychain backend"
+                )
+            ) {
+                try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+            }
+
+            let loaded = try await keychain.load(key: key)
+            try await keychain.delete(key: key)
+            #expect(loaded == "secret")
+        }
+    #endif
+
     @Test(arguments: BackendFixture.available)
     func internetPasswordsRoundTrip(_ fixture: BackendFixture) async throws {
         let keychain = Keychain(backend: fixture.make())
@@ -332,6 +353,24 @@ struct CapabilityValidationTests {
             try await keychain.saveInternetPassword("pw", for: key)
         }
     }
+
+    #if Cryptography
+        @Test
+        func unsupportedCryptoDeletionPreservesPasswords() async throws {
+            let key = KeychainKey<String>(service: "tests.capabilities", account: "kept")
+            try await keychain.save("secret", for: key)
+
+            await #expect(
+                throws: KeychainError.platformUnsupported(
+                    "Cryptographic keys are not supported by this keychain backend"
+                )
+            ) {
+                try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+            }
+
+            #expect(try await keychain.load(key: key) == "secret")
+        }
+    #endif
 
     @Test
     func supportedOperationsStillWork() async throws {

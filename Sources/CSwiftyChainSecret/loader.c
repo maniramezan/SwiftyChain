@@ -273,11 +273,12 @@ int swiftychain_secret_clear(
 swiftychain_secret_list *swiftychain_secret_search(
     swiftychain_secret_schema_kind kind,
     swiftychain_secret_attributes *attributes,
+    int unlock,
     int load_secrets,
     swiftychain_secret_cancellable *cancellable,
     swiftychain_secret_error **error
 ) {
-    int flags = SEARCH_ALL | SEARCH_UNLOCK | (load_secrets ? SEARCH_LOAD_SECRETS : 0);
+    int flags = SEARCH_ALL | (unlock ? SEARCH_UNLOCK : 0) | (load_secrets ? SEARCH_LOAD_SECRETS : 0);
     return fn.search(schema_for(kind), attributes, flags, cancellable, error);
 }
 

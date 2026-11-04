@@ -73,10 +73,11 @@ int swiftychain_secret_clear(
     swiftychain_secret_error **error
 );
 
-/* Returns every matching item, unlocking as needed. NULL with no error when nothing matches. */
+/** Returns every matching item, optionally unlocking them. NULL with no error when nothing matches. */
 swiftychain_secret_list *swiftychain_secret_search(
     swiftychain_secret_schema_kind kind,
     swiftychain_secret_attributes *attributes,
+    int unlock,
     int load_secrets,
     swiftychain_secret_cancellable *cancellable,
     swiftychain_secret_error **error

@@ -58,8 +58,9 @@ avoids the issue everywhere.
 If the keyring is locked, the Secret Service asks the user to unlock it, and the call waits
 for the answer. Each call gives up after 30 seconds and throws ``KeychainError/timedOut``,
 so an unanswered prompt or an unresponsive keyring daemon can't block your app forever.
-When the keyring is locked and no prompt can be shown, the call throws
-``KeychainError/userPresenceRequired``.
+When an unlock attempt leaves an existing item locked, reads and deletions throw
+``KeychainError/userPresenceRequired``. A dismissed prompt never makes an existing
+credential appear missing, and deletion succeeds only when no matching items remain.
 
 Like ``KeychainStorage`` on Apple platforms, calls block the calling thread while they wait.
 Prefer the ``Keychain`` actor over ``KeychainStorage`` on the main thread.

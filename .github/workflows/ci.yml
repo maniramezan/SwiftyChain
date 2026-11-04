@@ -214,13 +214,21 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            libsecret-1-0 gnome-keyring dbus-x11 procps
+            libsecret-1-0 gnome-keyring dbus-x11 procps python3-dbus
 
       - name: Test against GNOME Keyring
         timeout-minutes: 15
         env:
           SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION: "1"
         run: scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Test locked credentials without a display
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_RUN_SECRET_SERVICE_LOCKED_TESTS: "1"
+        run: >-
+          scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}"
+          -Xswiftc -warnings-as-errors --filter SecretServiceLockedTests
 
       - name: Test the timeout against a stopped keyring daemon
         timeout-minutes: 15
