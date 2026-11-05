@@ -66,3 +66,25 @@ func keychainErrorLogNamesCoverAllCases() {
         #expect(error.logName == expectedLogName)
     }
 }
+
+@Test(
+    arguments: [
+        KeychainError.itemNotFound,
+        .duplicateItem,
+        .authenticationFailed,
+        .userPresenceRequired,
+        .encodingFailed("bad"),
+        .decodingFailed("bad"),
+        .accessGroupDenied,
+        .platformUnsupported("none"),
+        .timedOut,
+    ]
+)
+func callerHandledErrorsAreExpectedOutcomes(_ error: KeychainError) {
+    #expect(error.isExpectedOutcome)
+}
+
+@Test(arguments: [KeychainError.unexpectedData, .operationFailed(-25300)])
+func platformFaultsAreNotExpectedOutcomes(_ error: KeychainError) {
+    #expect(!error.isExpectedOutcome)
+}

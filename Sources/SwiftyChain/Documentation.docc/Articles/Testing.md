@@ -1,6 +1,6 @@
 # Testing with SwiftyChain
 
-Test keychain-dependent code without touching the real Apple keychain.
+Test keychain-dependent code without touching the real platform keychain.
 
 ## Overview
 
@@ -10,7 +10,7 @@ It provides two in-memory test doubles:
 - `InMemoryKeychain` — for code that depends on ``KeychainProtocol``.
 - `InMemoryKeychainBackend` — for code that uses ``KeychainStorage`` directly.
 
-Neither touches the system keychain, so tests run fast and require no entitlements.
+Neither touches the platform keychain, so tests run fast, need no entitlements, and run the same on macOS and Linux CI.
 
 ## Add the Testing Product
 
@@ -247,7 +247,7 @@ import Testing
 }
 ```
 
-## Test Cryptographic Keys (requires `cryptography` trait)
+## Test Cryptographic Keys (requires `cryptography` trait, Apple platforms)
 
 When the `cryptography` trait is enabled, `InMemoryKeychain` implements the crypto-key
 CRUD operations:
@@ -298,3 +298,19 @@ specifically validate:
 
 Most feature logic should be covered by in-memory tests, which are faster, deterministic,
 and do not accumulate orphaned keychain items across test runs.
+
+On Linux, the real keychain needs a D-Bus session with an unlocked Secret Service. In CI,
+start a private session with an unlocked GNOME Keyring around your test command:
+
+```bash
+dbus-run-session -- bash -c '
+  echo -n test-password | gnome-keyring-daemon --unlock --components=secrets > /dev/null
+  swift test
+'
+```
+
+The keyring unlocks asynchronously. If the first call races the unlock it throws
+``KeychainError/userPresenceRequired``, so wait until the default collection reports it is
+unlocked before running tests. SwiftyChain's own
+[`scripts/with-gnome-keyring.sh`](https://github.com/maniramezan/SwiftyChain/blob/main/scripts/with-gnome-keyring.sh)
+does this and stops the daemons afterwards.
