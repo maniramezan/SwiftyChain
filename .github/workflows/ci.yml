@@ -22,7 +22,7 @@ env:
 
 jobs:
   lint:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -34,7 +34,7 @@ jobs:
         run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
 
   build-test:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 45
     needs: lint
     steps:
@@ -116,7 +116,7 @@ jobs:
             coverage.lcov
 
   documentation:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 30
     needs: lint
     steps:
@@ -237,5 +237,5 @@ jobs:
         run: |
           scripts/with-gnome-keyring.sh bash -c '
             pkill -STOP -x gnome-keyring-d
-            swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests
-          '
+            exec "$@"
+          ' _ swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests

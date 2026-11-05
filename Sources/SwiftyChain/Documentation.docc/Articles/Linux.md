@@ -50,7 +50,7 @@ round-trips exactly.
 Concurrent saves of the same item behave differently: within one process the ``Keychain``
 actor serializes calls, but separate processes race. On Apple, the second `save` throws
 ``KeychainError/duplicateItem``. On Linux, each write replaces the item in the keyring,
-so the last one wins. Calls from the same ``Keychain`` instance never race; ``upsert``
+so the last one wins. Calls from the same ``Keychain`` instance never race; ``Keychain/upsert(_:for:)``
 avoids the issue everywhere.
 
 ### Unlock prompts and timeouts
