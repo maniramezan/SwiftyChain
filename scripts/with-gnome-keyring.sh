@@ -21,6 +21,7 @@ snap_daemon_pids() {
 }
 
 daemon_pids_on_entry="$(snap_daemon_pids)"
+keyring_control_directory="$(mktemp -d)"
 
 # Lists the daemons started under this script: the ones present now that were
 # not there when the script entered.
@@ -32,16 +33,21 @@ stop_keyring() {
     local pids
     pids="$(new_daemon_pids)"
     if [ -z "$pids" ]; then
+        rm -rf -- "$keyring_control_directory"
         return
     fi
     # The CI timeout test freezes its daemon with SIGSTOP; resume it so it can exit.
     xargs -r kill -CONT <<< "$pids" 2>/dev/null || true
     xargs -r kill <<< "$pids" 2>/dev/null || true
+    rm -rf -- "$keyring_control_directory"
 }
 trap stop_keyring EXIT
 
 echo -n "${SWIFTYCHAIN_KEYRING_PASSWORD:-swiftychain}" \
-    | gnome-keyring-daemon --unlock --components=secrets > /dev/null 2>&1
+    | gnome-keyring-daemon --login --components=secrets \
+        --control-directory "$keyring_control_directory" > /dev/null
+gnome-keyring-daemon --start --components=secrets \
+    --control-directory "$keyring_control_directory" > /dev/null
 
 # The daemon unlocks the keyring asynchronously. Wait until the default collection
 # reports itself unlocked so the command never races the unlock.
