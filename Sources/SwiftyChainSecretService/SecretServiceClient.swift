@@ -14,36 +14,83 @@
 
     /// A thin, memory-safe wrapper over the dlopen-based libsecret loader.
     ///
-    /// Calls are serialized because libsecret's synchronous API runs a nested main loop
-    /// on the calling thread. Each call gets its own `GCancellable`, which a timer cancels
-    /// once the configured timeout elapses, so a hung keyring daemon or an unanswered
-    /// unlock prompt can't block the caller forever.
+    /// Calls are serialized process-wide, across every client instance, because
+    /// libsecret's synchronous API runs a nested main loop on the calling thread and
+    /// because SwiftyChain's check-then-write operations, such as ``add(_:label:data:)``,
+    /// must not interleave with another call. Each call gets its own `GCancellable`,
+    /// which a timer cancels once the configured timeout elapses, so a hung keyring
+    /// daemon or an unanswered unlock prompt can't block the caller forever.
     package final class SecretServiceClient: Sendable {
+        /// Shared by every client, so `Keychain.shared`, other `Keychain` instances, and
+        /// `KeychainStorage` wrappers in one process never interleave their calls.
+        private static let callLock = Mutex(())
+
         private let timeout: Duration
-        private let callLock = Mutex(())
 
         package init(timeout: Duration) {
             self.timeout = timeout
         }
 
-        package func store(_ query: SecretServiceItemQuery, label: String, data: Data) throws {
-            try perform("store", schema: query.schema) { cancellable, error in
-                try withAttributes(query.attributes) { attributes in
-                    let stored = data.withUnsafeBytes { buffer in
-                        swiftychain_secret_store(
-                            query.schema.kind,
-                            attributes,
-                            label,
-                            buffer.baseAddress,
-                            buffer.count,
-                            cancellable,
-                            &error
-                        )
+        /// Stores a new item, failing with ``KeychainError/duplicateItem`` when one with
+        /// the same identity exists. The check and the write run under one lock and one
+        /// deadline, so concurrent adds in this process can't both succeed.
+        package func add(_ identity: SecretServiceItemQuery, label: String, data: Data) throws {
+            try Self.validate(identity, label: label)
+            try perform("add", schema: identity.schema) { cancellable, _ in
+                try withAttributes(identity.attributes) { attributes in
+                    if try hasMatchingItems(identity, attributes: attributes, unlock: false, cancellable: cancellable) {
+                        SwiftyChainLoggers.backend.debug("Secret Service add found an existing item")
+                        throw KeychainError.duplicateItem
                     }
-                    if stored == 0 {
-                        try throwIfFailed(error)
-                        SwiftyChainLoggers.backend.error("libsecret store reported failure without an error")
-                        throw KeychainError.operationFailed(0)
+                    try storeItem(
+                        identity.schema,
+                        attributes: attributes,
+                        label: label,
+                        data: data,
+                        cancellable: cancellable
+                    )
+                }
+            }
+        }
+
+        /// Rewrites every item matching the query, keeping each item's own attributes.
+        ///
+        /// When `data` is `nil`, each item keeps its current secret, which means the
+        /// keyring may need to be unlocked to read it. The search and the writes run under
+        /// one lock and one deadline.
+        ///
+        /// - Throws: ``KeychainError/itemNotFound`` when nothing matches.
+        package func replace(_ matching: SecretServiceItemQuery, label: String?, data: Data?) throws {
+            try Self.validate(matching, label: label)
+            try perform("replace", schema: matching.schema) { cancellable, _ in
+                try withAttributes(matching.attributes) { attributes in
+                    let needsSecrets = data == nil
+                    let items = try searchItems(
+                        matching,
+                        attributes: attributes,
+                        unlock: needsSecrets,
+                        loadSecrets: needsSecrets,
+                        cancellable: cancellable
+                    )
+                    guard !items.isEmpty else {
+                        throw KeychainError.itemNotFound
+                    }
+                    for item in items {
+                        guard let secret = data ?? item.secret else {
+                            SwiftyChainLoggers.backend.error("Secret Service update could not read the existing secret")
+                            throw KeychainError.unexpectedData
+                        }
+                        // Storing with the item's exact attribute set replaces that item in place.
+                        let itemQuery = SecretServiceItemQuery(schema: matching.schema, attributes: item.attributes)
+                        try withAttributes(itemQuery.attributes) { itemAttributes in
+                            try storeItem(
+                                matching.schema,
+                                attributes: itemAttributes,
+                                label: label ?? item.label,
+                                data: secret,
+                                cancellable: cancellable
+                            )
+                        }
                     }
                 }
             }
@@ -51,7 +98,8 @@
 
         /// Returns the secret of the first matching item, or `nil` when nothing matches.
         package func lookup(_ query: SecretServiceItemQuery) throws -> Data? {
-            try perform("lookup", schema: query.schema) { cancellable, error in
+            try Self.validate(query, label: nil)
+            return try perform("lookup", schema: query.schema) { cancellable, error in
                 try withAttributes(query.attributes) { attributes in
                     let value = swiftychain_secret_lookup(query.schema.kind, attributes, cancellable, &error)
                     try throwIfFailed(error)
@@ -68,37 +116,19 @@
             }
         }
 
+        /// Returns every matching item. The keyring is asked to unlock only when secrets
+        /// are loaded, because item attributes are readable while it is locked.
         package func search(_ query: SecretServiceItemQuery, loadSecrets: Bool) throws -> [SecretServiceItem] {
-            try perform("search", schema: query.schema) { cancellable, error in
+            try Self.validate(query, label: nil)
+            return try perform("search", schema: query.schema) { cancellable, _ in
                 try withAttributes(query.attributes) { attributes in
-                    let list = swiftychain_secret_search(
-                        query.schema.kind,
-                        attributes,
-                        1,
-                        loadSecrets ? 1 : 0,
-                        cancellable,
-                        &error
+                    try searchItems(
+                        query,
+                        attributes: attributes,
+                        unlock: loadSecrets,
+                        loadSecrets: loadSecrets,
+                        cancellable: cancellable
                     )
-                    try throwIfFailed(error)
-                    guard let list else { return [] }
-                    defer { swiftychain_secret_list_free(list) }
-
-                    var items: [SecretServiceItem] = []
-                    var node: OpaquePointer? = list
-                    while let current = node {
-                        if let item = swiftychain_secret_list_item(current) {
-                            items.append(
-                                try readItem(
-                                    item,
-                                    schema: query.schema,
-                                    loadSecret: loadSecrets,
-                                    cancellable: cancellable
-                                )
-                            )
-                        }
-                        node = swiftychain_secret_list_next(current)
-                    }
-                    return items
                 }
             }
         }
@@ -106,7 +136,8 @@
         /// Removes every matching item. Returns whether anything was removed.
         @discardableResult
         package func clear(_ query: SecretServiceItemQuery) throws -> Bool {
-            try perform("clear", schema: query.schema) { cancellable, error in
+            try Self.validate(query, label: nil)
+            return try perform("clear", schema: query.schema) { cancellable, error in
                 try withAttributes(query.attributes) { attributes in
                     guard try hasMatchingItems(query, attributes: attributes, unlock: true, cancellable: cancellable)
                     else {
@@ -120,6 +151,93 @@
                     return removed != 0
                 }
             }
+        }
+
+        /// Rejects strings libsecret would silently truncate. Swift passes strings to C
+        /// as `const char *`, so libsecret sees only the text before the first NUL, and
+        /// `"x\0alpha"` and `"x\0beta"` would select the same item.
+        private static func validate(_ query: SecretServiceItemQuery, label: String?) throws {
+            for (name, value) in query.attributes where value.utf8.contains(0) {
+                SwiftyChainLoggers.backend.debug(
+                    "Rejected a Secret Service attribute containing NUL for attribute=\(name, privacy: .public)"
+                )
+                throw KeychainError.platformUnsupported("Secret Service attributes cannot contain NUL characters")
+            }
+            if let label, label.utf8.contains(0) {
+                SwiftyChainLoggers.backend.debug("Rejected a Secret Service label containing NUL")
+                throw KeychainError.platformUnsupported("Secret Service labels cannot contain NUL characters")
+            }
+        }
+
+        private func storeItem(
+            _ schema: SecretServiceSchema,
+            attributes: OpaquePointer,
+            label: String,
+            data: Data,
+            cancellable: OpaquePointer?
+        ) throws {
+            var error: OpaquePointer?
+            let stored = data.withUnsafeBytes { buffer in
+                swiftychain_secret_store(
+                    schema.kind,
+                    attributes,
+                    label,
+                    buffer.baseAddress,
+                    buffer.count,
+                    cancellable,
+                    &error
+                )
+            }
+            if stored == 0 {
+                do {
+                    try throwIfFailed(error)
+                } catch let failure as SecretServiceFailure where SecretServiceErrors.isNoSuchObject(failure) {
+                    // A store targets the default collection, so "no such object" means the
+                    // provider has none, as with KeePassXC before a database is exposed.
+                    SwiftyChainLoggers.backend.debug("libsecret store found no default collection")
+                    throw SecretServiceUnavailability.noDefaultCollection.error
+                }
+                SwiftyChainLoggers.backend.error("libsecret store reported failure without an error")
+                throw KeychainError.operationFailed(0)
+            }
+        }
+
+        private func searchItems(
+            _ query: SecretServiceItemQuery,
+            attributes: OpaquePointer,
+            unlock: Bool,
+            loadSecrets: Bool,
+            cancellable: OpaquePointer?
+        ) throws -> [SecretServiceItem] {
+            var error: OpaquePointer?
+            let list = swiftychain_secret_search(
+                query.schema.kind,
+                attributes,
+                unlock ? 1 : 0,
+                loadSecrets ? 1 : 0,
+                cancellable,
+                &error
+            )
+            try throwIfFailed(error)
+            guard let list else { return [] }
+            defer { swiftychain_secret_list_free(list) }
+
+            var items: [SecretServiceItem] = []
+            var node: OpaquePointer? = list
+            while let current = node {
+                if let item = swiftychain_secret_list_item(current) {
+                    items.append(
+                        try readItem(
+                            item,
+                            schema: query.schema,
+                            loadSecret: loadSecrets,
+                            cancellable: cancellable
+                        )
+                    )
+                }
+                node = swiftychain_secret_list_next(current)
+            }
+            return items
         }
 
         private func hasMatchingItems(
@@ -144,7 +262,7 @@
             schema: SecretServiceSchema,
             _ body: (OpaquePointer?, inout OpaquePointer?) throws -> Result
         ) throws -> Result {
-            try callLock.withLock { _ in
+            try Self.callLock.withLock { _ in
                 // The library must load before anything below it, because every GLib and
                 // libsecret call dereferences symbols resolved by dlopen. Then the timer
                 // is created, so every GLib call after it — including the D-Bus

@@ -18,6 +18,7 @@ package enum SecretServiceUnavailability: Sendable, Hashable {
     case libraryTooOld
     case noSessionBus
     case noProvider
+    case noDefaultCollection
 
     package var error: KeychainError {
         switch self {
@@ -31,6 +32,10 @@ package enum SecretServiceUnavailability: Sendable, Hashable {
             .platformUnsupported("No D-Bus session bus is available, so the Secret Service can't be reached")
         case .noProvider:
             .platformUnsupported("No Secret Service provider, such as GNOME Keyring or KWallet, is running")
+        case .noDefaultCollection:
+            .platformUnsupported(
+                "The Secret Service provider has no default collection to store items in. Create or expose one in the provider"
+            )
         }
     }
 }
@@ -55,6 +60,11 @@ package enum SecretServiceErrors {
     private static let dbusDisconnected: Int32 = 15
     private static let dbusTimedOut: Int32 = 20
     private static let dbusSpawnErrors: ClosedRange<Int32> = 23...34
+
+    /// Whether libsecret reported that an object, such as a collection, doesn't exist.
+    package static func isNoSuchObject(_ failure: SecretServiceFailure) -> Bool {
+        failure.domain == secretDomain && failure.code == secretNoSuchObject
+    }
 
     /// - Parameter timerFired: whether SwiftyChain's own timeout cancelled the call.
     package static func keychainError(for failure: SecretServiceFailure, timerFired: Bool) -> KeychainError {

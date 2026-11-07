@@ -25,16 +25,15 @@
         }
 
         package func add(_ query: KeychainQuery, data: Data) throws {
-            let identity = SecretServiceAttributes.identity(for: query)
-            guard try client.search(identity, loadSecrets: false).isEmpty else {
-                SwiftyChainLoggers.backend.debug("Secret Service add found an existing item")
-                throw KeychainError.duplicateItem
-            }
-            try client.store(identity, label: SecretServiceAttributes.label(for: query), data: data)
+            try client.add(
+                SecretServiceAttributes.identity(for: query),
+                label: SecretServiceAttributes.label(for: query),
+                data: data
+            )
         }
 
         package func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-            let matching = SecretServiceAttributes.matching(query)
+            let matching = try SecretServiceAttributes.matching(query)
             if query.matchLimit == .one, query.returnData {
                 guard let data = try client.lookup(matching) else {
                     throw KeychainError.itemNotFound
@@ -57,26 +56,27 @@
         }
 
         package func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
-            let matching = SecretServiceAttributes.matching(query)
-            let items = try client.search(matching, loadSecrets: attributes.data == nil)
-            guard !items.isEmpty else {
-                throw KeychainError.itemNotFound
-            }
-            for item in items {
-                guard let data = attributes.data ?? item.secret else {
-                    SwiftyChainLoggers.backend.error("Secret Service update could not read the existing secret")
-                    throw KeychainError.unexpectedData
-                }
-                // Storing with the item's exact attribute set replaces that item in place.
-                try client.store(
-                    SecretServiceItemQuery(schema: matching.schema, attributes: item.attributes),
-                    label: attributes.label ?? item.label,
-                    data: data
-                )
-            }
+            try client.replace(
+                SecretServiceAttributes.matching(query),
+                label: attributes.label,
+                data: attributes.data
+            )
         }
 
+        /// Deletes matching items.
+        ///
+        /// Every app built on SwiftyChain stores items under the same schemas, and the
+        /// Secret Service has no app sandbox to scope a query the way Apple's keychain
+        /// does. A delete must therefore name a non-empty service, server, or access
+        /// group; otherwise it would remove other SwiftyChain apps' items too.
         package func delete(matching query: KeychainQuery) throws {
+            let scopes = [query.service, query.server, query.accessGroup]
+            guard scopes.contains(where: { $0?.isEmpty == false }) else {
+                SwiftyChainLoggers.backend.debug("Secret Service rejected an unscoped delete")
+                throw KeychainError.platformUnsupported(
+                    "Deleting without a service, server, or access group is not supported by the Secret Service backend"
+                )
+            }
             try client.clear(SecretServiceAttributes.matching(query))
         }
     }

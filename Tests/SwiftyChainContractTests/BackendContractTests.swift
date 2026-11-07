@@ -60,6 +60,40 @@ private func uniqueService() -> String {
     "dev.manman.SwiftyChain.contract.\(UUID().uuidString)"
 }
 
+/// Runs `body`, then removes every item it may have stored, even when `body` throws,
+/// so a failing run never leaves items behind in the developer's real keychain.
+private func withCleanup(
+    _ keychain: Keychain,
+    services: [String] = [],
+    internetPasswords: [InternetPasswordKey] = [],
+    _ body: () async throws -> Void
+) async throws {
+    do {
+        try await body()
+    } catch {
+        await cleanUp(keychain, services: services, internetPasswords: internetPasswords)
+        throw error
+    }
+    await cleanUp(keychain, services: services, internetPasswords: internetPasswords)
+}
+
+private func cleanUp(_ keychain: Keychain, services: [String], internetPasswords: [InternetPasswordKey]) async {
+    for service in services {
+        do {
+            try await keychain.deleteAll(service: service)
+        } catch {
+            Issue.record("Could not clean up items for a contract-test service: \(error)")
+        }
+    }
+    for key in internetPasswords {
+        do {
+            try await keychain.deleteInternetPassword(for: key)
+        } catch {
+            Issue.record("Could not clean up a contract-test internet password: \(error)")
+        }
+    }
+}
+
 @Suite("Backend contract", .serialized)
 struct BackendContractTests {
     @Test(arguments: BackendFixture.available)
@@ -67,25 +101,28 @@ struct BackendContractTests {
         let keychain = Keychain(backend: fixture.make())
         let key = KeychainKey<String>(service: uniqueService(), account: "token")
 
-        try await keychain.save("secret", for: key)
-        let loaded = try await keychain.load(key: key)
-        try await keychain.delete(key: key)
+        try await withCleanup(keychain, services: [key.service]) {
+            try await keychain.save("secret", for: key)
+            let loaded = try await keychain.load(key: key)
 
-        #expect(loaded == "secret")
+            #expect(loaded == "secret")
+        }
     }
 
     @Test(arguments: BackendFixture.available)
     func saveRejectsDuplicates(_ fixture: BackendFixture) async throws {
         let keychain = Keychain(backend: fixture.make())
         let key = KeychainKey<String>(service: uniqueService(), account: "token")
-        try await keychain.save("first", for: key)
 
-        await #expect(throws: KeychainError.duplicateItem) {
-            try await keychain.save("second", for: key)
+        try await withCleanup(keychain, services: [key.service]) {
+            try await keychain.save("first", for: key)
+            await #expect(throws: KeychainError.duplicateItem) {
+                try await keychain.save("second", for: key)
+            }
+            let loaded = try await keychain.load(key: key)
+
+            #expect(loaded == "first")
         }
-        let loaded = try await keychain.load(key: key)
-        try await keychain.delete(key: key)
-        #expect(loaded == "first")
     }
 
     @Test(arguments: BackendFixture.available)
@@ -116,20 +153,22 @@ struct BackendContractTests {
         let keychain = Keychain(backend: fixture.make())
         let key = KeychainKey<String>(service: uniqueService(), account: "token")
 
-        try await keychain.upsert("first", for: key)
-        let afterInsert = try await keychain.load(key: key)
-        try await keychain.upsert("second", for: key)
-        let afterUpsert = try await keychain.load(key: key)
-        try await keychain.update("third", for: key)
-        let afterUpdate = try await keychain.load(key: key)
-        let exists = try await keychain.exists(key: key)
-        try await keychain.delete(key: key)
+        try await withCleanup(keychain, services: [key.service]) {
+            try await keychain.upsert("first", for: key)
+            let afterInsert = try await keychain.load(key: key)
+            try await keychain.upsert("second", for: key)
+            let afterUpsert = try await keychain.load(key: key)
+            try await keychain.update("third", for: key)
+            let afterUpdate = try await keychain.load(key: key)
+            let exists = try await keychain.exists(key: key)
+            try await keychain.delete(key: key)
 
-        #expect(afterInsert == "first")
-        #expect(afterUpsert == "second")
-        #expect(afterUpdate == "third")
-        #expect(exists)
-        #expect(try await keychain.exists(key: key) == false)
+            #expect(afterInsert == "first")
+            #expect(afterUpsert == "second")
+            #expect(afterUpdate == "third")
+            #expect(exists)
+            #expect(try await keychain.exists(key: key) == false)
+        }
     }
 
     @Test(arguments: BackendFixture.available)
@@ -138,11 +177,12 @@ struct BackendContractTests {
         let key = KeychainKey<Data>(service: uniqueService(), account: "blob")
         let payload = Data([0x00, 0xFF, 0x00, 0x80, 0x7F] + (0..<20_000).map { UInt8(truncatingIfNeeded: $0) })
 
-        try await keychain.save(payload, for: key)
-        let loaded = try await keychain.load(key: key)
-        try await keychain.delete(key: key)
+        try await withCleanup(keychain, services: [key.service]) {
+            try await keychain.save(payload, for: key)
+            let loaded = try await keychain.load(key: key)
 
-        #expect(loaded == payload)
+            #expect(loaded == payload)
+        }
     }
 
     @Test(arguments: BackendFixture.available)
@@ -150,17 +190,18 @@ struct BackendContractTests {
         let keychain = Keychain(backend: fixture.make())
         let service = uniqueService()
         let otherService = uniqueService()
-        try await keychain.save("a", for: KeychainKey<String>(service: service, account: "alice"))
-        try await keychain.save("b", for: KeychainKey<String>(service: service, account: "bob"))
-        try await keychain.save("c", for: KeychainKey<String>(service: otherService, account: "carol"))
 
-        let accounts = try await keychain.allAccounts(service: service)
-        let missing = try await keychain.allAccounts(service: uniqueService())
-        try await keychain.deleteAll(service: service)
-        try await keychain.deleteAll(service: otherService)
+        try await withCleanup(keychain, services: [service, otherService]) {
+            try await keychain.save("a", for: KeychainKey<String>(service: service, account: "alice"))
+            try await keychain.save("b", for: KeychainKey<String>(service: service, account: "bob"))
+            try await keychain.save("c", for: KeychainKey<String>(service: otherService, account: "carol"))
 
-        #expect(Set(accounts) == ["alice", "bob"])
-        #expect(missing.isEmpty)
+            let accounts = try await keychain.allAccounts(service: service)
+            let missing = try await keychain.allAccounts(service: uniqueService())
+
+            #expect(Set(accounts) == ["alice", "bob"])
+            #expect(missing.isEmpty)
+        }
     }
 
     @Test(arguments: BackendFixture.available)
@@ -169,36 +210,41 @@ struct BackendContractTests {
         let service = uniqueService()
         let otherService = uniqueService()
         let kept = KeychainKey<String>(service: otherService, account: "kept")
-        try await keychain.save("a", for: KeychainKey<String>(service: service, account: "a"))
-        try await keychain.save("b", for: KeychainKey<String>(service: service, account: "b"))
-        try await keychain.save("kept", for: kept)
 
-        try await keychain.deleteAll(service: service)
-        let remaining = try await keychain.allAccounts(service: service)
-        let keptValue = try await keychain.loadIfPresent(key: kept)
-        try await keychain.deleteAll(service: otherService)
+        try await withCleanup(keychain, services: [service, otherService]) {
+            try await keychain.save("a", for: KeychainKey<String>(service: service, account: "a"))
+            try await keychain.save("b", for: KeychainKey<String>(service: service, account: "b"))
+            try await keychain.save("kept", for: kept)
 
-        #expect(remaining.isEmpty)
-        #expect(keptValue == "kept")
+            try await keychain.deleteAll(service: service)
+            let remaining = try await keychain.allAccounts(service: service)
+            let keptValue = try await keychain.loadIfPresent(key: kept)
+
+            #expect(remaining.isEmpty)
+            #expect(keptValue == "kept")
+        }
     }
 
     @Test(arguments: BackendFixture.available.filter(\.canWriteSynchronizableItems))
     func deleteAllIncludesSynchronizableItems(_ fixture: BackendFixture) async throws {
         let keychain = Keychain(backend: fixture.make())
         let service = uniqueService()
-        try await keychain.save("local", for: KeychainKey<String>(service: service, account: "local"))
-        try await keychain.save(
-            "synced",
-            for: KeychainKey<String>(service: service, account: "synced", isSynchronizable: true)
-        )
 
-        try await keychain.deleteAllSynchronizable(service: service)
-        let afterSyncDelete = try await keychain.allAccounts(service: service)
-        try await keychain.deleteAll(service: service)
-        let afterDeleteAll = try await keychain.allAccounts(service: service)
+        try await withCleanup(keychain, services: [service]) {
+            try await keychain.save("local", for: KeychainKey<String>(service: service, account: "local"))
+            try await keychain.save(
+                "synced",
+                for: KeychainKey<String>(service: service, account: "synced", isSynchronizable: true)
+            )
 
-        #expect(afterSyncDelete == ["local"])
-        #expect(afterDeleteAll.isEmpty)
+            try await keychain.deleteAllSynchronizable(service: service)
+            let afterSyncDelete = try await keychain.allAccounts(service: service)
+            try await keychain.deleteAll(service: service)
+            let afterDeleteAll = try await keychain.allAccounts(service: service)
+
+            #expect(afterSyncDelete == ["local"])
+            #expect(afterDeleteAll.isEmpty)
+        }
     }
 
     @Test(arguments: BackendFixture.available.filter(\.canUseCustomAccessGroups))
@@ -208,20 +254,22 @@ struct BackendContractTests {
         let groupA = KeychainKey<String>(service: service, account: "token", accessGroup: "group.a")
         let groupB = KeychainKey<String>(service: service, account: "token", accessGroup: "group.b")
         let anyGroup = KeychainKey<String>(service: service, account: "token")
-        try await keychain.save("a", for: groupA)
-        try await keychain.save("b", for: groupB)
 
-        let loadedA = try await keychain.load(key: groupA)
-        let loadedB = try await keychain.load(key: groupB)
-        try await keychain.delete(key: groupA)
-        let afterDeleteA = try await keychain.loadIfPresent(key: groupB)
-        let unscoped = try await keychain.exists(key: anyGroup)
-        try await keychain.deleteAll(service: service)
+        try await withCleanup(keychain, services: [service]) {
+            try await keychain.save("a", for: groupA)
+            try await keychain.save("b", for: groupB)
 
-        #expect(loadedA == "a")
-        #expect(loadedB == "b")
-        #expect(afterDeleteA == "b")
-        #expect(unscoped)
+            let loadedA = try await keychain.load(key: groupA)
+            let loadedB = try await keychain.load(key: groupB)
+            try await keychain.delete(key: groupA)
+            let afterDeleteA = try await keychain.loadIfPresent(key: groupB)
+            let unscoped = try await keychain.exists(key: anyGroup)
+
+            #expect(loadedA == "a")
+            #expect(loadedB == "b")
+            #expect(afterDeleteA == "b")
+            #expect(unscoped)
+        }
     }
 
     #if os(Linux) && Cryptography
@@ -229,19 +277,21 @@ struct BackendContractTests {
         func cryptoDeletionCannotSelectLinuxPasswords() async throws {
             let keychain = Keychain()
             let key = KeychainKey<String>(service: uniqueService(), account: "kept")
-            try await keychain.save("secret", for: key)
 
-            await #expect(
-                throws: KeychainError.platformUnsupported(
-                    "Cryptographic keys are not supported by this keychain backend"
-                )
-            ) {
-                try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+            try await withCleanup(keychain, services: [key.service]) {
+                try await keychain.save("secret", for: key)
+
+                await #expect(
+                    throws: KeychainError.platformUnsupported(
+                        "Cryptographic keys are not supported by this keychain backend"
+                    )
+                ) {
+                    try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+                }
+
+                let loaded = try await keychain.load(key: key)
+                #expect(loaded == "secret")
             }
-
-            let loaded = try await keychain.load(key: key)
-            try await keychain.delete(key: key)
-            #expect(loaded == "secret")
         }
     #endif
 
@@ -265,19 +315,21 @@ struct BackendContractTests {
             authenticationType: .htmlForm
         )
 
-        try await keychain.saveInternetPassword("hunter2", for: key)
-        let loaded = try await keychain.loadInternetPassword(for: key)
-        await #expect(throws: KeychainError.duplicateItem) {
-            try await keychain.saveInternetPassword("again", for: key)
-        }
-        await #expect(throws: KeychainError.itemNotFound) {
-            try await keychain.loadInternetPassword(for: otherPort)
-        }
-        try await keychain.deleteInternetPassword(for: key)
+        try await withCleanup(keychain, internetPasswords: [key]) {
+            try await keychain.saveInternetPassword("hunter2", for: key)
+            let loaded = try await keychain.loadInternetPassword(for: key)
+            await #expect(throws: KeychainError.duplicateItem) {
+                try await keychain.saveInternetPassword("again", for: key)
+            }
+            await #expect(throws: KeychainError.itemNotFound) {
+                try await keychain.loadInternetPassword(for: otherPort)
+            }
+            try await keychain.deleteInternetPassword(for: key)
 
-        #expect(loaded == "hunter2")
-        await #expect(throws: KeychainError.itemNotFound) {
-            try await keychain.loadInternetPassword(for: key)
+            #expect(loaded == "hunter2")
+            await #expect(throws: KeychainError.itemNotFound) {
+                try await keychain.loadInternetPassword(for: key)
+            }
         }
     }
 }

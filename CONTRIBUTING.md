@@ -87,7 +87,7 @@ Before opening a PR:
 
 The following are **not** accepted in v1.0:
 
-- **Windows / Linux support** — `Security.framework` does not exist there. The `SecureStorageBackend` protocol keeps the door open for a future `WindowsCredentialBackend` in v2.0.
+- **New platform backends without a maintainer plan** — Linux is supported through the Secret Service. A backend for another platform, such as Windows Credential Manager, is welcome as a proposal first: open an issue describing how it maps to `SecureStorageBackend` and how CI will exercise it.
 - **`kSecClassCertificate` / `kSecClassIdentity`** — planned v1.1+ based on user demand.
 - **Keychain migration utilities** — planned v1.1+ (bulk-migrate items between services/accounts/formats).
 - **macOS-only legacy keychain APIs** (`SecKeychainCreate`, ACLs) — use `SecItem*` uniformly.

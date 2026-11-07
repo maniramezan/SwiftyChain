@@ -48,6 +48,15 @@ public actor Keychain: KeychainProtocol {
 
     package var backend: any SecureStorageBackend { engine.backend }
 
+    #if os(Linux)
+        /// On Linux, keychain work runs on a dedicated serial queue rather than Swift's
+        /// cooperative thread pool, because libsecret calls block their thread while they
+        /// wait for the keyring.
+        public nonisolated var unownedExecutor: UnownedSerialExecutor {
+            KeychainExecutor.shared.asUnownedSerialExecutor()
+        }
+    #endif
+
     /// Creates a new ``Keychain`` instance backed by the platform keychain.
     public init() {
         self.init(backend: PlatformDefaultBackend.make())
@@ -192,6 +201,11 @@ public actor Keychain: KeychainProtocol {
     ///
     /// Use this method when you need fine-grained control over which items are removed,
     /// such as targeting a specific item class or access group.
+    ///
+    /// On Linux, the query must name a service or an access group. Every app built on
+    /// SwiftyChain stores items under the same Secret Service schemas, so an unscoped
+    /// query would remove other apps' items; it throws ``KeychainError/platformUnsupported(_:)``
+    /// instead.
     ///
     /// - Parameter query: A ``KeychainDeleteQuery`` describing the items to delete.
     /// - Throws: ``KeychainError`` if the underlying operation fails.

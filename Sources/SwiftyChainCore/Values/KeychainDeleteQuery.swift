@@ -36,7 +36,10 @@ public struct KeychainDeleteQuery: Sendable, Hashable {
     /// Creates a new bulk-delete query.
     ///
     /// - Parameters:
-    ///   - service: The service to match. Pass `nil` to delete across all services.
+    ///   - service: The service to match. Pass `nil` to delete across all services. On Linux,
+    ///     a query with neither a service nor an access group throws
+    ///     ``KeychainError/platformUnsupported(_:)``, because every app built on SwiftyChain
+    ///     shares the same Secret Service schemas.
     ///   - accessGroup: The access group to match. Pass `nil` for the default group.
     ///   - includeSynchronizable: Include iCloud-synchronized generic-password items. Ignored for internet passwords. Defaults to `true`.
     ///   - onlySynchronizable: Delete only iCloud-synchronized generic-password items. Ignored for internet passwords — such a query deletes every matching internet password. Defaults to `false`.

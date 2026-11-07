@@ -216,6 +216,38 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             libsecret-1-0 gnome-keyring dbus-x11 procps python3-dbus
 
+      - name: Test without a session bus
+        env:
+          DBUS_SESSION_BUS_ADDRESS: unix:path=/nonexistent/swiftychain-bus
+          SWIFTYCHAIN_EXPECT_NO_SESSION_BUS: "1"
+        run: >-
+          swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+          --filter SecretServiceNoSessionBusTests
+
+      # The bus config lists no service directories, so D-Bus can't activate
+      # gnome-keyring and the session has no Secret Service provider.
+      - name: Test without a Secret Service provider
+        env:
+          SWIFTYCHAIN_EXPECT_NO_PROVIDER: "1"
+        run: |
+          config="$(mktemp)"
+          cat > "$config" <<'EOF'
+          <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+            "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+          <busconfig>
+            <type>session</type>
+            <listen>unix:tmpdir=/tmp</listen>
+            <auth>EXTERNAL</auth>
+            <policy context="default">
+              <allow send_destination="*" eavesdrop="true"/>
+              <allow eavesdrop="true"/>
+              <allow own="*"/>
+            </policy>
+          </busconfig>
+          EOF
+          dbus-run-session --config-file="$config" -- \
+            swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceNoProviderTests
+
       - name: Test against GNOME Keyring
         timeout-minutes: 15
         env:
@@ -239,3 +271,28 @@ jobs:
             pkill -STOP -x gnome-keyring-d
             exec "$@"
           ' _ swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests
+
+  # Nothing else compiles the fallback for platforms without a keychain backend
+  # (UnsupportedPlatformBackend), so build the package for WebAssembly.
+  wasm:
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 30
+    container: swift:6.4.2-noble
+    env:
+      WASM_SDK_URL: https://download.swift.org/swift-6.4.2-release/wasm-sdk/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE_wasm.artifactbundle.tar.gz
+      WASM_SDK_CHECKSUM: 83baca83553f8c443cda7b84800912e6e709c3acd2e7ebf277794ca5836c0da5
+      WASM_SDK_ID: swift-6.4.2-RELEASE_wasm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Swift SDK for WebAssembly
+        run: swift sdk install "${WASM_SDK_URL}" --checksum "${WASM_SDK_CHECKSUM}"
+
+      - name: Build for WebAssembly (default traits)
+        run: swift build --swift-sdk "${WASM_SDK_ID}" --target SwiftyChainTesting -Xswiftc -warnings-as-errors
+
+      - name: Build for WebAssembly (observation trait)
+        run: >-
+          swift build --swift-sdk "${WASM_SDK_ID}" --traits observation
+          --target SwiftyChainTesting -Xswiftc -warnings-as-errors

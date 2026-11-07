@@ -9,8 +9,8 @@ import Testing
 @Suite("Secret Service attribute mapping")
 struct SecretServiceAttributesTests {
     @Test
-    func identityStoresEveryGenericPasswordAttribute() {
-        let identity = SecretServiceAttributes.identity(
+    func identityStoresEveryGenericPasswordAttribute() throws {
+        let identity = try SecretServiceAttributes.identity(
             for: KeychainQuery(itemClass: .genericPassword, service: "com.example", account: "alice")
         )
 
@@ -19,8 +19,8 @@ struct SecretServiceAttributesTests {
     }
 
     @Test
-    func identityStoresEveryInternetPasswordAttribute() {
-        let identity = SecretServiceAttributes.identity(
+    func identityStoresEveryInternetPasswordAttribute() throws {
+        let identity = try SecretServiceAttributes.identity(
             for: KeychainQuery(
                 itemClass: .internetPassword,
                 account: "alice",
@@ -46,8 +46,8 @@ struct SecretServiceAttributesTests {
     }
 
     @Test
-    func matchingOmitsUnsetAttributesSoTheyMatchAnything() {
-        let matching = SecretServiceAttributes.matching(
+    func matchingOmitsUnsetAttributesSoTheyMatchAnything() throws {
+        let matching = try SecretServiceAttributes.matching(
             KeychainQuery(itemClass: .genericPassword, service: "com.example", isSynchronizable: false)
         )
 
@@ -55,8 +55,8 @@ struct SecretServiceAttributesTests {
     }
 
     @Test
-    func matchingKeepsExplicitInternetAttributes() {
-        let matching = SecretServiceAttributes.matching(
+    func matchingKeepsExplicitInternetAttributes() throws {
+        let matching = try SecretServiceAttributes.matching(
             KeychainQuery(itemClass: .internetPassword, account: "alice", server: "example.com", port: 8443)
         )
 
@@ -64,14 +64,14 @@ struct SecretServiceAttributesTests {
     }
 
     @Test
-    func labelsDefaultToServiceAndAccount() {
+    func labelsDefaultToServiceAndAccount() throws {
         let generic = KeychainQuery(itemClass: .genericPassword, service: "com.example", account: "alice")
         let internet = KeychainQuery(itemClass: .internetPassword, account: "alice", server: "example.com")
         let custom = KeychainQuery(itemClass: .genericPassword, service: "s", account: "a", label: "My token")
 
-        #expect(SecretServiceAttributes.label(for: generic) == "com.example (alice)")
-        #expect(SecretServiceAttributes.label(for: internet) == "alice@example.com")
-        #expect(SecretServiceAttributes.label(for: custom) == "My token")
+        #expect(try SecretServiceAttributes.label(for: generic) == "com.example (alice)")
+        #expect(try SecretServiceAttributes.label(for: internet) == "alice@example.com")
+        #expect(try SecretServiceAttributes.label(for: custom) == "My token")
     }
 
     @Test
@@ -97,6 +97,20 @@ struct SecretServiceAttributesTests {
         #expect(Set(protocols.map(SecretServiceAttributes.storedValue)).count == protocols.count)
         #expect(Set(authenticationTypes.map(SecretServiceAttributes.storedValue)).count == authenticationTypes.count)
     }
+
+    #if Cryptography
+        @Test
+        func cryptographicKeysHaveNoSchema() {
+            let query = KeychainQuery(itemClass: .cryptographicKey, service: "com.example")
+            let unsupported = KeychainError.platformUnsupported(
+                "Cryptographic keys are not supported by this keychain backend"
+            )
+
+            #expect(throws: unsupported) { try SecretServiceAttributes.schema(for: .cryptographicKey) }
+            #expect(throws: unsupported) { try SecretServiceAttributes.matching(query) }
+            #expect(throws: unsupported) { try SecretServiceAttributes.identity(for: query) }
+        }
+    #endif
 
     #if os(Linux)
         @Test(arguments: [SecretServiceSchema.genericPassword, .internetPassword])

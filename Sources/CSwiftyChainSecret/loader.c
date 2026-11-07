@@ -139,6 +139,7 @@ static struct {
     swiftychain_secret_cancellable *(*cancellable_new)(void);
     void (*cancellable_cancel)(swiftychain_secret_cancellable *);
     void *(*bus_get_sync)(int, swiftychain_secret_cancellable *, swiftychain_secret_error **);
+    void (*connection_set_exit_on_close)(void *, swiftychain_gboolean);
     const char *(*quark_to_string)(swiftychain_gquark);
     void (*error_free)(swiftychain_secret_error *);
 } fn;
@@ -156,7 +157,11 @@ static pthread_once_t load_once = PTHREAD_ONCE_INIT;
     } while (0)
 
 static void load_library(void) {
-    void *handle = dlopen("libsecret-1.so.0", RTLD_NOW | RTLD_GLOBAL);
+    /*
+     * RTLD_LOCAL keeps libsecret's and GLib's symbols out of the host's global
+     * namespace; every symbol used here is resolved through this handle with dlsym.
+     */
+    void *handle = dlopen("libsecret-1.so.0", RTLD_NOW | RTLD_LOCAL);
     if (handle == NULL) {
         load_status = SWIFTYCHAIN_SECRET_LIBRARY_MISSING;
         return;
@@ -184,6 +189,7 @@ static void load_library(void) {
     RESOLVE(cancellable_new, "g_cancellable_new");
     RESOLVE(cancellable_cancel, "g_cancellable_cancel");
     RESOLVE(bus_get_sync, "g_bus_get_sync");
+    RESOLVE(connection_set_exit_on_close, "g_dbus_connection_set_exit_on_close");
     RESOLVE(quark_to_string, "g_quark_to_string");
     RESOLVE(error_free, "g_error_free");
     load_status = SWIFTYCHAIN_SECRET_LOADED;
@@ -217,6 +223,12 @@ int swiftychain_secret_session_bus_available(
     if (connection == NULL) {
         return 0;
     }
+    /*
+     * The shared session connection raises SIGTERM in the process when the bus
+     * disconnects. A keychain library must not terminate a long-running host, so a
+     * lost bus surfaces as an error from the next call instead.
+     */
+    fn.connection_set_exit_on_close(connection, 0);
     fn.object_unref(connection);
     return 1;
 }

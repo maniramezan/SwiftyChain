@@ -97,13 +97,17 @@ Behavior that differs from Apple platforms:
 | `accessGroup` | Stored as an attribute; namespaces items but doesn't isolate them |
 | `accessibility`, `comment` | Not stored |
 | `cryptography` trait | Unavailable (it stores Apple `SecKey` values) |
-| Unresponsive keyring or unanswered unlock prompt | Throws `KeychainError.timedOut` after 30 seconds |
-| Two processes saving the same item | Last write wins; Apple throws `duplicateItem` for the second save |
+| Unresponsive keyring or unanswered unlock prompt | Throws `KeychainError.timedOut` after 30 seconds per keyring request (an `upsert` of an existing item makes two) |
+| Two processes saving the same item | Last write wins; Apple throws `duplicateItem` for the second save. Within one process, `duplicateItem` is thrown as on Apple |
+| `deleteAllItems(matching:)` without a service or access group | Throws `platformUnsupported`, because every SwiftyChain app shares the same keyring schemas |
+| Strings containing NUL | Throws `platformUnsupported` |
 
 > **Isolation**: Linux has no per-app keychain permissions. Once the keyring is unlocked,
 > any program running as the same user can read its items, including SwiftyChain's.
-> Apps distributed as Flatpak or Snap get per-app storage automatically: libsecret keeps
-> their secrets in an app-private file encrypted with a key from the Secret portal.
+> Use a service name unique to your app, because every SwiftyChain app shares the same
+> keyring schemas. Flatpak and Snap apps can get per-app storage: with libsecret 0.20+
+> (built with crypto support) and a Secret portal on the host, libsecret keeps their
+> secrets in an app-private file encrypted with a key from the portal.
 
 ## Traits
 

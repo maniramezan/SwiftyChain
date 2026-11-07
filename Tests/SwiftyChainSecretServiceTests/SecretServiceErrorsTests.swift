@@ -35,8 +35,17 @@ struct SecretServiceErrorsTests {
 
     @Test
     func unavailabilityReasonsAreDistinct() {
-        let reasons: [SecretServiceUnavailability] = [.libraryMissing, .libraryTooOld, .noSessionBus, .noProvider]
+        let reasons: [SecretServiceUnavailability] = [
+            .libraryMissing, .libraryTooOld, .noSessionBus, .noProvider, .noDefaultCollection,
+        ]
 
         #expect(Set(reasons.map { String(describing: $0.error) }).count == reasons.count)
+    }
+
+    @Test
+    func recognizesMissingObjects() {
+        #expect(SecretServiceErrors.isNoSuchObject(SecretServiceFailure(domain: "secret-error", code: 3)))
+        #expect(!SecretServiceErrors.isNoSuchObject(SecretServiceFailure(domain: "secret-error", code: 2)))
+        #expect(!SecretServiceErrors.isNoSuchObject(SecretServiceFailure(domain: "g-io-error-quark", code: 3)))
     }
 }

@@ -42,28 +42,49 @@ in plaintext or in memory.
 | ``KeychainKey/accessibility`` | Not stored. The keyring's own lock state controls access. |
 | ``KeychainKey/comment`` | Not stored. |
 | ``KeychainKey/label`` | Shown as the item name in keyring managers such as Seahorse. Defaults to `service (account)`. |
+| Strings containing a NUL character | Throws ``KeychainError/platformUnsupported(_:)``. libsecret reads attributes as C strings, so it would otherwise see only the text before the NUL. |
+| ``Keychain/deleteAllItems(matching:)`` without a service or access group | Throws ``KeychainError/platformUnsupported(_:)``; see <doc:#Isolation-between-applications>. |
 | `cryptography` trait | Unavailable; it stores Apple `SecKey` values. |
 
 Values are stored as binary data with no size limit, so every ``KeychainStorable`` type
 round-trips exactly.
 
-Concurrent saves of the same item behave differently: within one process the ``Keychain``
-actor serializes calls, but separate processes race. On Apple, the second `save` throws
-``KeychainError/duplicateItem``. On Linux, each write replaces the item in the keyring,
-so the last one wins. Calls from the same ``Keychain`` instance never race; ``Keychain/upsert(_:for:)``
-avoids the issue everywhere.
+Within one process, SwiftyChain serializes every Secret Service call, across all
+``Keychain`` instances and ``KeychainStorage`` wrappers. Concurrent saves of the same item
+therefore behave as on Apple platforms: one succeeds and the others throw
+``KeychainError/duplicateItem``. Separate processes still race. On Apple, the second
+process's `save` throws ``KeychainError/duplicateItem``; on Linux, each write replaces
+the item in the keyring, so the last one wins. ``Keychain/upsert(_:for:)`` avoids the
+difference everywhere.
 
 ### Unlock prompts and timeouts
 
 If the keyring is locked, the Secret Service asks the user to unlock it, and the call waits
-for the answer. Each call gives up after 30 seconds and throws ``KeychainError/timedOut``,
-so an unanswered prompt or an unresponsive keyring daemon can't block your app forever.
-When an unlock attempt leaves an existing item locked, reads and deletions throw
-``KeychainError/userPresenceRequired``. A dismissed prompt never makes an existing
-credential appear missing, and deletion succeeds only when no matching items remain.
+for the answer. Only calls that need a secret or change the keyring ask: loading, saving,
+updating, and deleting. ``Keychain/exists(key:)`` and ``Keychain/allAccounts(service:accessGroup:)``
+read item attributes, which stay readable while the keyring is locked, so they never prompt.
 
-Like ``KeychainStorage`` on Apple platforms, calls block the calling thread while they wait.
-Prefer the ``Keychain`` actor over ``KeychainStorage`` on the main thread.
+Each request to the keyring gives up after 30 seconds and throws ``KeychainError/timedOut``,
+so an unanswered prompt or an unresponsive keyring daemon can't block your app forever.
+Most operations make one request. ``Keychain/upsert(_:for:)`` makes two when the item
+already exists (a save that finds the duplicate, then an update), so it can wait up to 60
+seconds. Time spent waiting for another SwiftyChain call in the same process to finish
+isn't counted.
+
+When an unlock attempt leaves an existing item locked, reads and deletions throw
+``KeychainError/userPresenceRequired``. libsecret reports a dismissed prompt and a prompt
+that couldn't be shown the same way, so both surface as this error. A dismissed prompt
+never makes an existing credential appear missing, and deletion succeeds only when no
+matching items remain.
+
+The ``Keychain`` actor runs on its own dispatch queue on Linux, so a call waiting on the
+keyring never blocks Swift's shared concurrency thread pool. ``KeychainStorage`` is
+synchronous and blocks the calling thread while it waits, so prefer the ``Keychain`` actor
+on the main thread.
+
+Providers that have no default collection, such as KeePassXC before a database exposes
+one, can't store new items. Saves then throw ``KeychainError/platformUnsupported(_:)``
+saying so.
 
 ### Isolation between applications
 
@@ -71,15 +92,21 @@ The Secret Service has no per-application permissions. Once the user's keyring i
 usually at login, any program running as that user can read every item in it, including
 SwiftyChain's. ``KeychainKey/accessGroup`` organizes items; it doesn't protect them.
 
-Sandboxed apps are the exception. Inside Flatpak or Snap, libsecret stores secrets in a file
-inside the app's own data directory, encrypted with a per-app key obtained from the
+Sandboxed apps can be the exception. When libsecret 0.20 or newer, built with its optional
+crypto support, runs inside Flatpak or Snap and the host provides the
 [Secret portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Secret.html),
-so other sandboxed apps can't read them. This needs a Secret portal implementation on the
-host, which GNOME provides.
+libsecret stores secrets in a file inside the app's own data directory, encrypted with a
+per-app key from the portal, so other apps can't read them. GNOME provides the portal.
+Otherwise, sandboxed apps use the host's Secret Service like any other program.
 
 SwiftyChain stores items under its own schemas (`dev.manman.SwiftyChain.GenericPassword` and
-`dev.manman.SwiftyChain.InternetPassword`), so bulk deletes such as
-``Keychain/deleteAll(service:accessGroup:)`` never remove other applications' items.
+`dev.manman.SwiftyChain.InternetPassword`), so its queries never touch items that other
+programs store. Every app built on SwiftyChain shares those schemas, though, and the Secret
+Service has no app sandbox to tell their items apart. Use a service name unique to your app,
+such as its reverse-DNS identifier. For the same reason, a bulk delete must name a service,
+server, or access group; ``Keychain/deleteAllItems(matching:)`` with an empty
+``KeychainDeleteQuery`` throws ``KeychainError/platformUnsupported(_:)`` instead of
+removing every SwiftyChain app's items.
 
 ### Logging
 

@@ -39,13 +39,25 @@ package struct SecretServiceItemQuery: Sendable, Hashable {
 /// leaves one unset. A query built with ``identity(for:)`` therefore selects exactly
 /// one item, while ``matching(_:)`` omits unset fields so they match any value.
 package enum SecretServiceAttributes {
-    package static func schema(for itemClass: KeychainItemClass) -> SecretServiceSchema {
-        itemClass == .internetPassword ? .internetPassword : .genericPassword
+    /// The schema for an item class.
+    ///
+    /// - Throws: ``KeychainError/platformUnsupported(_:)`` for cryptographic keys, which
+    ///   the Secret Service backend can't store.
+    package static func schema(for itemClass: KeychainItemClass) throws -> SecretServiceSchema {
+        switch itemClass.kind {
+        case .genericPassword:
+            return .genericPassword
+        case .internetPassword:
+            return .internetPassword
+        case .cryptographicKey:
+            SwiftyChainLoggers.backend.debug("Secret Service rejected a cryptographic key query")
+            throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
+        }
     }
 
     /// Attributes selecting every stored item the query describes.
-    package static func matching(_ query: KeychainQuery) -> SecretServiceItemQuery {
-        let schema = schema(for: query.itemClass)
+    package static func matching(_ query: KeychainQuery) throws -> SecretServiceItemQuery {
+        let schema = try schema(for: query.itemClass)
         var attributes: [String: String] = [:]
         switch schema {
         case .genericPassword:
@@ -64,8 +76,8 @@ package enum SecretServiceAttributes {
     }
 
     /// The complete attribute set stored with a new item.
-    package static func identity(for query: KeychainQuery) -> SecretServiceItemQuery {
-        let schema = schema(for: query.itemClass)
+    package static func identity(for query: KeychainQuery) throws -> SecretServiceItemQuery {
+        let schema = try schema(for: query.itemClass)
         var attributes: [String: String] = [:]
         switch schema {
         case .genericPassword:
@@ -84,11 +96,11 @@ package enum SecretServiceAttributes {
     }
 
     /// The label shown for a new item in keyring managers such as Seahorse.
-    package static func label(for query: KeychainQuery) -> String {
+    package static func label(for query: KeychainQuery) throws -> String {
         if let label = query.label {
             return label
         }
-        switch schema(for: query.itemClass) {
+        switch try schema(for: query.itemClass) {
         case .genericPassword:
             return "\(query.service ?? "") (\(query.account ?? ""))"
         case .internetPassword:
