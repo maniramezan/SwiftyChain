@@ -152,6 +152,13 @@ public actor InMemoryKeychain: KeychainProtocol {
         ) -> AsyncStream<KeychainChangeEvent> {
             engine.observeKeychainChanges(service: service, accessGroup: accessGroup)
         }
+
+        /// Observes internet-password changes for a server.
+        public func observeKeychainChanges(server: String, accessGroup: String? = nil) -> AsyncStream<
+            KeychainChangeEvent
+        > {
+            engine.observeKeychainChanges(server: server, accessGroup: accessGroup)
+        }
     #endif
 
     #if Cryptography && canImport(Security)

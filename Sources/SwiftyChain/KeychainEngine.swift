@@ -8,11 +8,29 @@ import Foundation
 package struct KeychainEngine: Sendable {
     package let backend: any KeychainBackend
     #if Observation
-        private let observers = KeychainObserverRegistry()
+        private let observers: KeychainObserverRegistry
     #endif
 
     package init(backend: any KeychainBackend) {
         self.backend = backend
+        #if Observation
+            self.observers = KeychainObserverRegistry()
+        #endif
+    }
+
+    #if Observation
+        package init(backend: any KeychainBackend, observers: KeychainObserverRegistry) {
+            self.backend = backend
+            self.observers = observers
+        }
+    #endif
+
+    package static func platformDefault() -> Self {
+        #if Observation
+            Self(backend: PlatformDefaultBackend.make(), observers: .platformDefault)
+        #else
+            Self(backend: PlatformDefaultBackend.make())
+        #endif
     }
 
     package func save<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
@@ -139,7 +157,11 @@ package struct KeychainEngine: Sendable {
                 )
             }
             if let service = query.service {
-                notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
+                if query.itemClass == .internetPassword {
+                    notify(server: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
+                } else {
+                    notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
+                }
             }
             logBulkDeleteSucceeded(query: query)
         } catch {
@@ -191,7 +213,7 @@ package struct KeychainEngine: Sendable {
                 validated(internetIdentityQuery(for: key), for: .add),
                 attributes: KeychainAttributes(data: password.keychainData(), accessibility: key.accessibility)
             )
-            notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
+            notify(server: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
             logKeychainOperationSucceeded("saveInternetPassword", service: key.server, account: key.account)
         } catch {
             logKeychainOperationFailed("saveInternetPassword", service: key.server, account: key.account, error: error)
@@ -219,7 +241,7 @@ package struct KeychainEngine: Sendable {
         logKeychainOperationStarted("deleteInternetPassword", service: key.server, account: key.account)
         do {
             try backend.delete(matching: validated(internetIdentityQuery(for: key), for: .delete))
-            notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
+            notify(server: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("deleteInternetPassword", service: key.server, account: key.account)
         } catch {
             logKeychainOperationFailed(
@@ -237,11 +259,21 @@ package struct KeychainEngine: Sendable {
             observers.register(service: service, accessGroup: accessGroup)
         }
 
+        package func observeKeychainChanges(server: String, accessGroup: String?) -> AsyncStream<KeychainChangeEvent> {
+            observers.register(server: server, accessGroup: accessGroup)
+        }
+
+        private func notify(server: String, account: String?, accessGroup: String?, kind: KeychainChangeEvent.Kind) {
+            observers.emit(KeychainChangeEvent(server: server, account: account, kind: kind), accessGroup: accessGroup)
+        }
+
         private func notify(service: String, account: String?, accessGroup: String?, kind: KeychainChangeEvent.Kind) {
             observers.emit(
                 KeychainChangeEvent(service: service, account: account, kind: kind), accessGroup: accessGroup)
         }
     #else
+        private func notify(server: String, account: String?, accessGroup: String?, kind: MutationKind) {}
+
         private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {}
 
         private enum MutationKind {

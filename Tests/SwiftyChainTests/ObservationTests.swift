@@ -55,3 +55,60 @@
         #expect(event?.kind == .bulkDeleted)
     }
 #endif
+
+#if Observation
+    @Test(.timeLimit(.minutes(1)))
+    func sharedRegistryReceivesStorageAndOtherActorWrites() async throws {
+        let service = "tests.observation.shared.\(UUID().uuidString)"
+        let backend = InMemoryKeychainBackend()
+        let registry = KeychainObserverRegistry.platformDefault
+        let observer = KeychainEngine(backend: backend, observers: registry)
+        let writer = KeychainEngine(backend: backend, observers: registry)
+        let stream = observer.observeKeychainChanges(service: service, accessGroup: nil)
+        let key = KeychainKey<String>(service: service, account: "token")
+        try writer.upsert("value", for: key)
+        var iterator = stream.makeAsyncIterator()
+        #expect(await iterator.next() == KeychainChangeEvent(service: service, account: "token", kind: .saved))
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func internetEventsNameTheirServer() async throws {
+        let keychain = InMemoryKeychain()
+        let key = InternetPasswordKey(server: "observation.example.com", account: "alice")
+        let stream = await keychain.observeKeychainChanges(server: key.server)
+        try await keychain.saveInternetPassword("secret", for: key)
+        try await keychain.deleteInternetPassword(for: key)
+        var iterator = stream.makeAsyncIterator()
+        let saved = await iterator.next()
+        let deleted = await iterator.next()
+        #expect(saved?.service == nil)
+        #expect(saved?.server == key.server)
+        #expect(saved?.kind == .saved)
+        #expect(deleted?.kind == .deleted)
+    }
+
+    #if canImport(Security)
+        @Test(
+            .enabled(if: ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1"),
+            .timeLimit(.minutes(1)))
+        func storageAndPlatformInstancesReachSharedObservers() async throws {
+            let service = "tests.observation.storage.\(UUID().uuidString)"
+            let stream = await Keychain.shared.observeKeychainChanges(service: service)
+            let storage = KeychainStorage<String>("token", service: service)
+            storage.wrappedValue = "first"
+            try #require(storage.projectedValue == nil)
+            let key = KeychainKey<String>(service: service, account: "token")
+            do {
+                try await Keychain().update("second", for: key)
+                storage.wrappedValue = nil
+                var iterator = stream.makeAsyncIterator()
+                #expect(await iterator.next()?.kind == .saved)
+                #expect(await iterator.next()?.kind == .updated)
+                #expect(await iterator.next()?.kind == .deleted)
+            } catch {
+                try? await Keychain.shared.delete(key: key)
+                throw error
+            }
+        }
+    #endif
+#endif

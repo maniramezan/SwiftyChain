@@ -48,14 +48,11 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
         accessibility: KeychainAccessibility? = nil,
         isSynchronizable: Bool = false
     ) {
-        self.init(
-            account,
-            service: service,
-            backend: PlatformDefaultBackend.make(),
-            accessGroup: accessGroup,
-            accessibility: accessibility,
-            isSynchronizable: isSynchronizable
-        )
+        self.key = KeychainKey(
+            service: service, account: account, accessGroup: accessGroup,
+            accessibility: accessibility, isSynchronizable: isSynchronizable)
+        self.engine = .platformDefault()
+        self.errorBox = ErrorBox()
     }
 
     /// Creates a property wrapper that stores its value in a custom ``KeychainBackend``.
