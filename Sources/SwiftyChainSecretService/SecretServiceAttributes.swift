@@ -118,9 +118,10 @@ package enum SecretServiceAttributes {
         return SecretServiceItemQuery(schema: schema, attributes: attributes)
     }
 
-    /// The label shown for a new item in keyring managers such as Seahorse.
-    package static func label(for query: KeychainQuery) throws -> String {
-        if let label = query.label {
+    /// The label shown for a new item in keyring managers such as Seahorse: `custom` when
+    /// the caller set one, otherwise one derived from the query.
+    package static func label(for query: KeychainQuery, custom: String?) throws -> String {
+        if let label = custom {
             return label
         }
         switch try schema(for: query.itemClass) {
@@ -129,12 +130,6 @@ package enum SecretServiceAttributes {
         case .internetPassword:
             return "\(query.account ?? "")@\(query.server ?? "")"
         }
-    }
-
-    /// The attributes SwiftyChain reports for a stored item.
-    package static func keychainAttributes(from stored: [String: String]) -> [KeychainAttribute] {
-        [stored["account"].map(KeychainAttribute.account), stored["service"].map(KeychainAttribute.service)]
-            .compactMap { $0 }
     }
 
     // These strings are persisted in users' keyrings. Never change an existing value.

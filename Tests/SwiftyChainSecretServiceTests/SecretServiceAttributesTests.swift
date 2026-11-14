@@ -67,20 +67,11 @@ struct SecretServiceAttributesTests {
     func labelsDefaultToServiceAndAccount() throws {
         let generic = KeychainQuery(itemClass: .genericPassword, service: "com.example", account: "alice")
         let internet = KeychainQuery(itemClass: .internetPassword, account: "alice", server: "example.com")
-        let custom = KeychainQuery(itemClass: .genericPassword, service: "s", account: "a", label: "My token")
+        let custom = KeychainQuery(itemClass: .genericPassword, service: "s", account: "a")
 
-        #expect(try SecretServiceAttributes.label(for: generic) == "com.example (alice)")
-        #expect(try SecretServiceAttributes.label(for: internet) == "alice@example.com")
-        #expect(try SecretServiceAttributes.label(for: custom) == "My token")
-    }
-
-    @Test
-    func storedAttributesMapBackToKeychainAttributes() {
-        let attributes = SecretServiceAttributes.keychainAttributes(
-            from: ["service": "com.example", "account": "alice", "accessGroup": ""]
-        )
-
-        #expect(attributes == [.account("alice"), .service("com.example")])
+        #expect(try SecretServiceAttributes.label(for: generic, custom: nil) == "com.example (alice)")
+        #expect(try SecretServiceAttributes.label(for: internet, custom: nil) == "alice@example.com")
+        #expect(try SecretServiceAttributes.label(for: custom, custom: "My token") == "My token")
     }
 
     @Test(

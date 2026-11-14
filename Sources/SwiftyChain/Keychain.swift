@@ -46,8 +46,6 @@ public actor Keychain: KeychainProtocol {
 
     package let engine: KeychainEngine
 
-    package var backend: any SecureStorageBackend { engine.backend }
-
     #if os(Linux)
         /// On Linux, keychain work runs on a dedicated serial queue rather than Swift's
         /// cooperative thread pool, because libsecret calls block their thread while they
@@ -62,7 +60,18 @@ public actor Keychain: KeychainProtocol {
         self.init(backend: PlatformDefaultBackend.make())
     }
 
-    package init(backend: any SecureStorageBackend) {
+    /// Creates a ``Keychain`` that stores items in a custom ``KeychainBackend``.
+    ///
+    /// Every query is validated against the backend's
+    /// ``KeychainBackend/capabilities`` before the backend sees it, so a backend never
+    /// receives an option it declared unsupported.
+    ///
+    /// ```swift
+    /// let keychain = Keychain(backend: InMemoryKeychainBackend())
+    /// ```
+    ///
+    /// - Parameter backend: The storage that receives every keychain operation.
+    public init(backend: any KeychainBackend) {
         self.engine = KeychainEngine(backend: backend)
     }
 

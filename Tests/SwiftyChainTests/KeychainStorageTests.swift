@@ -80,114 +80,49 @@ func keychainStorageClearsProjectedErrorAfterSuccessfulRead() throws {
     #expect(storage.projectedValue == nil)
 }
 
+/// A backend whose every call fails with the same error.
 private struct FailingBackend: KeychainBackend {
-    func save(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        throw KeychainError.operationFailed(-1)
-    }
+    var error: any Error = KeychainError.operationFailed(-1)
+    let capabilities: KeychainBackendCapabilities = .all
 
-    func load(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws -> Data {
-        throw KeychainError.operationFailed(-1)
-    }
-
-    func update(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        throw KeychainError.operationFailed(-1)
-    }
-
-    func delete(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws {
-        throw KeychainError.operationFailed(-1)
-    }
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws { throw error }
+    func data(matching query: KeychainQuery) throws -> Data { throw error }
+    func contains(matching query: KeychainQuery) throws -> Bool { throw error }
+    func accounts(matching query: KeychainQuery) throws -> [String] { throw error }
+    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws { throw error }
+    func delete(matching query: KeychainQuery) throws { throw error }
 }
 
 private final class DuplicateThenUpdateBackend: KeychainBackend, @unchecked Sendable {
+    let capabilities: KeychainBackendCapabilities = .all
     var updatedData: Data?
 
-    func save(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
         throw KeychainError.duplicateItem
     }
 
-    func load(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws -> Data {
-        throw KeychainError.itemNotFound
+    func data(matching query: KeychainQuery) throws -> Data { throw KeychainError.itemNotFound }
+    func contains(matching query: KeychainQuery) throws -> Bool { true }
+    func accounts(matching query: KeychainQuery) throws -> [String] { [] }
+
+    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
+        updatedData = attributes.data
     }
 
-    func update(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        updatedData = data
-    }
-
-    func delete(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws {}
+    func delete(matching query: KeychainQuery) throws {}
 }
 
 private struct ThrowingUnexpectedErrorBackend: KeychainBackend {
     struct Boom: Error {}
 
-    func save(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        throw Boom()
-    }
+    let capabilities: KeychainBackendCapabilities = .all
 
-    func load(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws -> Data {
-        throw Boom()
-    }
-
-    func update(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {
-        throw Boom()
-    }
-
-    func delete(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws {
-        throw Boom()
-    }
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws { throw Boom() }
+    func data(matching query: KeychainQuery) throws -> Data { throw Boom() }
+    func contains(matching query: KeychainQuery) throws -> Bool { throw Boom() }
+    func accounts(matching query: KeychainQuery) throws -> [String] { throw Boom() }
+    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws { throw Boom() }
+    func delete(matching query: KeychainQuery) throws { throw Boom() }
 }
 
 private final class RecoveringLoadBackend: KeychainBackend, @unchecked Sendable {
@@ -196,20 +131,12 @@ private final class RecoveringLoadBackend: KeychainBackend, @unchecked Sendable 
         case success(Data)
     }
 
+    let capabilities: KeychainBackendCapabilities = .all
     var mode: Mode = .failure
 
-    func save(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {}
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {}
 
-    func load(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws -> Data {
+    func data(matching query: KeychainQuery) throws -> Data {
         switch mode {
         case .failure:
             throw KeychainError.operationFailed(-1)
@@ -218,16 +145,8 @@ private final class RecoveringLoadBackend: KeychainBackend, @unchecked Sendable 
         }
     }
 
-    func update(
-        _ data: Data,
-        service: String,
-        account: String,
-        accessGroup: String?,
-        accessibility: KeychainAccessibility,
-        isSynchronizable: Bool,
-        label: String?,
-        comment: String?
-    ) throws {}
-
-    func delete(service: String, account: String, accessGroup: String?, isSynchronizable: Bool) throws {}
+    func contains(matching query: KeychainQuery) throws -> Bool { true }
+    func accounts(matching query: KeychainQuery) throws -> [String] { [] }
+    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
+    func delete(matching query: KeychainQuery) throws {}
 }
