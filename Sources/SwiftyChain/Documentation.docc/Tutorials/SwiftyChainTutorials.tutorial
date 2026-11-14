@@ -1,7 +1,7 @@
 @Tutorials(name: "SwiftyChain") {
     @Intro(title: "Meet SwiftyChain") {
         Learn how to use SwiftyChain to securely store and retrieve
-        typed values in the Apple keychain.
+        typed values in the Apple keychain or the Linux Secret Service.
     }
 
     @Chapter(name: "Getting Started") {

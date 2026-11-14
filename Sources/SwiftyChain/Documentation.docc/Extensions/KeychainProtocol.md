@@ -4,7 +4,7 @@
 
 `KeychainProtocol` is the dependency-injection interface for keychain operations.
 Declare your feature code against it so tests can inject an in-memory implementation
-without touching the real system keychain.
+without touching the real platform keychain.
 
 ```swift
 actor TokenStore {

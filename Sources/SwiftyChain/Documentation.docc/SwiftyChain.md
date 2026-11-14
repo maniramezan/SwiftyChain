@@ -4,7 +4,7 @@ Store and retrieve keychain values with Swift-native types.
 
 ## Overview
 
-SwiftyChain wraps Apple's `SecItem*` APIs behind typed keys, a public `Keychain` actor, and a lightweight `@KeychainStorage` property wrapper. It is fully `Sendable`, actor-isolated, and supports Swift concurrency out of the box.
+SwiftyChain stores secrets behind typed keys, a public `Keychain` actor, and a lightweight `@KeychainStorage` property wrapper. It uses the Apple Keychain on Apple platforms and the Secret Service (GNOME Keyring or KWallet) on Linux, with the same code. It is fully `Sendable`, actor-isolated, and supports Swift concurrency out of the box.
 
 Key design goals:
 
@@ -19,7 +19,7 @@ Add SwiftyChain to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/maniramezan/SwiftyChain", from: "1.0.0"),
+    .package(url: "https://github.com/maniramezan/SwiftyChain", from: "2.0.0"),
 ],
 targets: [
     .target(
@@ -38,7 +38,7 @@ SwiftyChain ships two opt-in traits that gate additional features at compile tim
 | Trait | What it adds |
 |---|---|
 | `observation` | ``KeychainObserving``, ``Keychain/observeKeychainChanges(service:accessGroup:)``, and ``KeychainChangeEvent`` |
-| `cryptography` | ``KeychainCryptoStoring``, ``Keychain/saveCryptoKey(_:for:)``, ``Keychain/loadCryptoKey(keyRef:)``, ``Keychain/deleteCryptoKey(keyRef:)``, ``CryptoKeyReference``, ``StoredSecKey`` |
+| `cryptography` (Apple platforms only) | ``KeychainCryptoStoring``, ``Keychain/saveCryptoKey(_:for:)``, ``Keychain/loadCryptoKey(keyRef:)``, ``Keychain/deleteCryptoKey(keyRef:)``, ``CryptoKeyReference``, ``StoredSecKey`` |
 
 Traits are unified across your whole dependency graph: if any package enables one, every
 package sees it. Trait-gated requirements therefore live in their own protocols rather than
@@ -61,6 +61,11 @@ Enable traits by passing them to the product dependency:
 - <doc:GettingStarted>
 - ``Keychain``
 - ``KeychainKey``
+
+### Platforms
+
+- <doc:Linux>
+- <doc:Architecture>
 
 ### Storing Values
 

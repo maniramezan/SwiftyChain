@@ -1,11 +1,10 @@
 import Foundation
 import SwiftyChain
-import Synchronization
 
 /// An in-memory implementation of `KeychainBackend` for use in tests.
 ///
 /// Use `InMemoryKeychainBackend` when initialising `KeychainStorage` directly in
-/// unit tests. Items are stored in a dictionary and never touch the system keychain,
+/// unit tests. Items are stored in memory and never touch the system keychain,
 /// so tests run fast and require no entitlements.
 ///
 /// ```swift
@@ -27,24 +26,10 @@ import Synchronization
 ///
 /// ## Thread safety
 ///
-/// `InMemoryKeychainBackend` is `Sendable` and uses a `Mutex` to serialize
-/// concurrent reads and writes, so it is safe to share across threads or tasks.
+/// `InMemoryKeychainBackend` is `Sendable` and serializes concurrent reads and
+/// writes, so it is safe to share across threads or tasks.
 public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
-    private struct StorageKey: Hashable, Sendable {
-        let service: String
-        let account: String
-        let accessGroup: String?
-        let isSynchronizable: Bool
-    }
-
-    private struct StorageValue: Sendable {
-        let data: Data
-        let accessibility: KeychainAccessibility
-        let label: String?
-        let comment: String?
-    }
-
-    private let storage = Mutex<[StorageKey: StorageValue]>([:])
+    private let adapter = SecureStorageKeychainBackend(InMemoryStorageBackend())
 
     /// Creates a new, empty in-memory keychain backend.
     public init() {}
@@ -62,23 +47,16 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
         label: String?,
         comment: String?
     ) throws {
-        let key = StorageKey(
+        try adapter.save(
+            data,
             service: service,
             account: account,
             accessGroup: accessGroup,
-            isSynchronizable: isSynchronizable
+            accessibility: accessibility,
+            isSynchronizable: isSynchronizable,
+            label: label,
+            comment: comment
         )
-        try storage.withLock { items in
-            if items[key] != nil {
-                throw KeychainError.duplicateItem
-            }
-            items[key] = StorageValue(
-                data: data,
-                accessibility: accessibility,
-                label: label,
-                comment: comment
-            )
-        }
     }
 
     /// Loads the raw data for an existing keychain item.
@@ -90,18 +68,8 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
         accessGroup: String?,
         isSynchronizable: Bool
     ) throws -> Data {
-        let key = StorageKey(
-            service: service,
-            account: account,
-            accessGroup: accessGroup,
-            isSynchronizable: isSynchronizable
-        )
-        return try storage.withLock { items in
-            guard let item = items[key] else {
-                throw KeychainError.itemNotFound
-            }
-            return item.data
-        }
+        try adapter.load(
+            service: service, account: account, accessGroup: accessGroup, isSynchronizable: isSynchronizable)
     }
 
     /// Replaces the raw data for an existing keychain item.
@@ -117,23 +85,16 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
         label: String?,
         comment: String?
     ) throws {
-        let key = StorageKey(
+        try adapter.update(
+            data,
             service: service,
             account: account,
             accessGroup: accessGroup,
-            isSynchronizable: isSynchronizable
+            accessibility: accessibility,
+            isSynchronizable: isSynchronizable,
+            label: label,
+            comment: comment
         )
-        try storage.withLock { items in
-            guard items[key] != nil else {
-                throw KeychainError.itemNotFound
-            }
-            items[key] = StorageValue(
-                data: data,
-                accessibility: accessibility,
-                label: label,
-                comment: comment
-            )
-        }
     }
 
     /// Removes a keychain item. This is a no-op if the item does not exist.
@@ -143,14 +104,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
         accessGroup: String?,
         isSynchronizable: Bool
     ) throws {
-        let key = StorageKey(
-            service: service,
-            account: account,
-            accessGroup: accessGroup,
-            isSynchronizable: isSynchronizable
-        )
-        _ = storage.withLock { items in
-            items.removeValue(forKey: key)
-        }
+        try adapter.delete(
+            service: service, account: account, accessGroup: accessGroup, isSynchronizable: isSynchronizable)
     }
 }
