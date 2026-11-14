@@ -46,10 +46,8 @@ public actor Keychain: KeychainProtocol {
 
     package let engine: KeychainEngine
 
-    #if os(Linux)
-        /// On Linux, keychain work runs on a dedicated serial queue rather than Swift's
-        /// cooperative thread pool, because libsecret calls block their thread while they
-        /// wait for the keyring.
+    #if canImport(Dispatch)
+        /// Keychain calls run on a dedicated serial queue because platform storage calls block.
         public nonisolated var unownedExecutor: UnownedSerialExecutor {
             KeychainExecutor.shared.asUnownedSerialExecutor()
         }
