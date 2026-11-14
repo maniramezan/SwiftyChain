@@ -17,7 +17,7 @@ The remaining parameters are optional:
 
 - `accessGroup` — use when the value must be shared between multiple apps or extensions.
 - `accessibility` — controls when the item can be read, such as `.whenUnlocked`.
-- `isSynchronizable` — set to `true` to participate in iCloud Keychain sync.
+- `isSynchronizable` — set to `true` to participate in iCloud Keychain sync (Apple platforms only).
 
 Both the wrapped getter and setter are non-mutating, so you can hold a
 `@KeychainStorage` property on a `let`, read it from a SwiftUI `View.body`,

@@ -5,18 +5,25 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   XCODE_PATH: /Applications/Xcode_26.4.1.app/Contents/Developer
   TRAITS: "cryptography,observation"
+  DOCS_SWIFT_VERSION: "6.4.2"
   COVERAGE_MIN: "80"
 
 jobs:
   lint:
-    runs-on: macos-26
+    runs-on: macos-26-intel
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -27,7 +34,8 @@ jobs:
         run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
 
   build-test:
-    runs-on: macos-26
+    runs-on: macos-26-intel
+    timeout-minutes: 45
     needs: lint
     steps:
       - uses: actions/checkout@v7
@@ -108,13 +116,21 @@ jobs:
             coverage.lcov
 
   documentation:
-    runs-on: macos-26
+    runs-on: macos-26-intel
+    timeout-minutes: 30
     needs: lint
     steps:
       - uses: actions/checkout@v7
 
       - name: Select Xcode 26.4.1
         run: sudo xcode-select -s "${XCODE_PATH}"
+
+      # DocC in Swift 6.3 omits symbols that SwiftyChain re-exports from
+      # SwiftyChainCore; 6.4 documents them, so docs build with a 6.4 toolchain.
+      - name: Set up Swift ${{ env.DOCS_SWIFT_VERSION }}
+        uses: ./.github/actions/setup-swift-toolchain
+        with:
+          version: ${{ env.DOCS_SWIFT_VERSION }}
 
       - name: Restore SwiftPM caches
         uses: actions/cache@v6
@@ -123,39 +139,239 @@ jobs:
             .build
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ env.DOCS_SWIFT_VERSION }}-swiftpm-docs-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-docs-
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-swift-${{ env.DOCS_SWIFT_VERSION }}-swiftpm-docs-
 
+      # Builds the same combined archive the Pages deploy publishes, so a broken
+      # site fails the pull request instead of the deploy.
       - name: Build documentation (default traits)
         run: |
-          xcrun swift package generate-documentation \
+          swift package \
+            --allow-writing-to-directory .build/docs-default \
+            generate-documentation \
             --target SwiftyChain \
+            --target SwiftyChainTesting \
+            --enable-experimental-combined-documentation \
+            --output-path .build/docs-default \
             --warnings-as-errors \
-            --disable-indexing
+            --transform-for-static-hosting \
+            --hosting-base-path SwiftyChain
 
       - name: Build documentation (all traits)
         run: |
-          xcrun swift package \
+          swift package \
             --traits "${TRAITS}" \
+            --allow-writing-to-directory .build/docs \
             generate-documentation \
             --target SwiftyChain \
-            --warnings-as-errors \
-            --disable-indexing
-
-      - name: Build SwiftyChainTesting documentation (default traits)
-        run: |
-          xcrun swift package generate-documentation \
             --target SwiftyChainTesting \
+            --enable-experimental-combined-documentation \
+            --output-path .build/docs \
             --warnings-as-errors \
-            --disable-indexing
+            --transform-for-static-hosting \
+            --hosting-base-path SwiftyChain
 
-      - name: Build SwiftyChainTesting documentation (all traits)
+      - name: Check documentation contents
         run: |
-          xcrun swift package \
-            --traits "${TRAITS}" \
-            generate-documentation \
-            --target SwiftyChainTesting \
-            --warnings-as-errors \
-            --disable-indexing
+          scripts/check-docs.py .build/docs-default
+          scripts/check-docs.py .build/docs
+
+  linux:
+    name: linux (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 45
+    container: swift:${{ matrix.swift }}-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["6.3.3", "6.4.2"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore SwiftPM caches
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: linux-swift-${{ matrix.swift }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            linux-swift-${{ matrix.swift }}-
+
+      # libsecret is loaded at runtime, so these steps prove the package builds and
+      # fails closed on a machine without it.
+      - name: Build and test without libsecret (default traits)
+        env:
+          SWIFTYCHAIN_EXPECT_NO_LIBSECRET: "1"
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Build and test without libsecret (all traits)
+        run: swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Install the Secret Service runtime
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libsecret-1-0 libsecret-tools gnome-keyring dbus-x11 procps python3-dbus
+
+      - name: Test without a session bus
+        env:
+          DBUS_SESSION_BUS_ADDRESS: unix:path=/nonexistent/swiftychain-bus
+          SWIFTYCHAIN_EXPECT_NO_SESSION_BUS: "1"
+        run: >-
+          swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+          --filter SecretServiceNoSessionBusTests
+
+      # The bus config lists no service directories, so D-Bus can't activate
+      # gnome-keyring and the session has no Secret Service provider.
+      - name: Test without a Secret Service provider
+        env:
+          SWIFTYCHAIN_EXPECT_NO_PROVIDER: "1"
+        run: |
+          config="$(mktemp)"
+          cat > "$config" <<'EOF'
+          <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+            "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+          <busconfig>
+            <type>session</type>
+            <listen>unix:tmpdir=/tmp</listen>
+            <auth>EXTERNAL</auth>
+            <policy context="default">
+              <allow send_destination="*" eavesdrop="true"/>
+              <allow eavesdrop="true"/>
+              <allow own="*"/>
+            </policy>
+          </busconfig>
+          EOF
+          dbus-run-session --config-file="$config" -- \
+            swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceNoProviderTests
+
+      - name: Test against GNOME Keyring
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION: "1"
+        run: scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors
+
+      - name: Test locked credentials without a display
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_RUN_SECRET_SERVICE_LOCKED_TESTS: "1"
+        run: >-
+          scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}"
+          -Xswiftc -warnings-as-errors --filter SecretServiceLockedTests
+
+      - name: Test recovery after the keyring daemon restarts
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_SECRET_SERVICE_RESTART: "1"
+        run: >-
+          scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}"
+          -Xswiftc -warnings-as-errors --filter SecretServiceRestartTests
+
+      - name: Test the timeout against a stopped keyring daemon
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_SECRET_SERVICE_HUNG: "1"
+        run: |
+          # The inner shell expands the variable, which the keyring script sets.
+          # shellcheck disable=SC2016
+          scripts/with-gnome-keyring.sh bash -c '
+            pkill -STOP -f -- "--control-directory=$SWIFTYCHAIN_KEYRING_CONTROL_DIRECTORY"
+            exec "$@"
+          ' _ swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests
+
+  # A binary built with the Static Linux SDK (musl) can't dlopen libsecret, so the
+  # backend must report that rather than claim libsecret is missing.
+  static-linux:
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 30
+    container: swift:6.4.2-noble
+    env:
+      STATIC_SDK_URL: https://download.swift.org/swift-6.4.2-release/static-sdk/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz
+      STATIC_SDK_CHECKSUM: 3786b179936d9cc9e266dd506bd1654176358d7b25288e243359f4d17cc4dc5a
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Static Linux SDK
+        run: swift sdk install "${STATIC_SDK_URL}" --checksum "${STATIC_SDK_CHECKSUM}"
+
+      - name: Install libsecret
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsecret-1-0
+
+      # The Static Linux SDK has no Swift Testing, so a small program built against this
+      # checkout checks the error instead. libsecret is installed, so only the static
+      # binary's lack of dlopen can make it fail.
+      - name: Check a statically linked build
+        run: |
+          probe="$(mktemp -d)"
+          mkdir -p "$probe/Sources/StaticProbe"
+          cat > "$probe/Package.swift" <<EOF
+          // swift-tools-version: 6.3
+          import PackageDescription
+          let package = Package(
+              name: "StaticProbe",
+              dependencies: [.package(path: "$GITHUB_WORKSPACE")],
+              targets: [
+                  .executableTarget(
+                      name: "StaticProbe",
+                      dependencies: [.product(name: "SwiftyChain", package: "$(basename "$GITHUB_WORKSPACE")")]
+                  )
+              ]
+          )
+          EOF
+          cat > "$probe/Sources/StaticProbe/main.swift" <<'EOF'
+          import SwiftyChain
+
+          do {
+              _ = try await Keychain().loadIfPresent(key: KeychainKey<String>(service: "ci.static", account: "a"))
+              fatalError("Expected the Secret Service to be unavailable in a static binary")
+          } catch KeychainError.platformUnsupported(let message) where message.contains("statically linked") {
+              print("OK: \(message)")
+          } catch {
+              fatalError("Unexpected error: \(error)")
+          }
+          EOF
+          swift run --package-path "$probe" --swift-sdk "$(uname -m)-swift-linux-musl" StaticProbe
+
+  # FreeBSD has no keychain backend; this proves the package, including its swift-log
+  # dependency, builds there and its tests pass. swiftlang's reusable workflow runs the
+  # only FreeBSD toolchain published for CI, a main-branch nightly, in a FreeBSD VM.
+  freebsd:
+    name: freebsd
+    needs: lint
+    uses: swiftlang/github-workflows/.github/workflows/swift_package_test.yml@0.0.17
+    with:
+      enable_linux_checks: false
+      enable_windows_checks: false
+      enable_freebsd_checks: true
+      freebsd_build_command: swift test
+
+  # Nothing else compiles the fallback for platforms without a keychain backend
+  # (UnsupportedPlatformBackend), so build the package for WebAssembly.
+  wasm:
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 30
+    container: swift:6.4.2-noble
+    env:
+      WASM_SDK_URL: https://download.swift.org/swift-6.4.2-release/wasm-sdk/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE_wasm.artifactbundle.tar.gz
+      WASM_SDK_CHECKSUM: 83baca83553f8c443cda7b84800912e6e709c3acd2e7ebf277794ca5836c0da5
+      WASM_SDK_ID: swift-6.4.2-RELEASE_wasm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Swift SDK for WebAssembly
+        run: swift sdk install "${WASM_SDK_URL}" --checksum "${WASM_SDK_CHECKSUM}"
+
+      - name: Build for WebAssembly (default traits)
+        run: swift build --swift-sdk "${WASM_SDK_ID}" --target SwiftyChainTesting -Xswiftc -warnings-as-errors
+
+      - name: Build for WebAssembly (observation trait)
+        run: >-
+          swift build --swift-sdk "${WASM_SDK_ID}" --traits observation
+          --target SwiftyChainTesting -Xswiftc -warnings-as-errors

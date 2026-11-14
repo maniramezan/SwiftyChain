@@ -9,13 +9,13 @@
 /// trait, or adding a class in a future release, never breaks an exhaustive `switch`
 /// in your code. Compare values with `==` instead.
 public struct KeychainItemClass: Sendable, Hashable {
-    internal enum Kind: Sendable, Hashable {
+    package enum Kind: Sendable, Hashable {
         case genericPassword
         case internetPassword
         case cryptographicKey
     }
 
-    internal let kind: Kind
+    package let kind: Kind
 
     private init(kind: Kind) {
         self.kind = kind

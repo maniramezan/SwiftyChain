@@ -5,6 +5,9 @@
 `Keychain` is the primary entry point for all keychain operations. It is
 declared as an `actor` so every method is automatically thread-safe.
 
+On Apple platforms it stores items in the system Keychain. On Linux it stores them
+in the freedesktop Secret Service, such as GNOME Keyring or KWallet; see <doc:Linux>.
+
 Use the ``shared`` singleton for production code. In tests, depend on
 ``KeychainProtocol`` and use `SwiftyChainTesting.InMemoryKeychain` to avoid
 hitting the real keychain.

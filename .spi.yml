@@ -1,4 +1,7 @@
 version: 1
 builder:
   configs:
+    # DocC in Swift 6.3 omits symbols that SwiftyChain re-exports from SwiftyChainCore,
+    # such as KeychainKey and KeychainError; 6.4 documents them.
     - documentation_targets: [SwiftyChain, SwiftyChainTesting]
+      swift_version: '6.4'

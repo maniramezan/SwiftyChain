@@ -18,6 +18,10 @@ try await keychain.upsert("secret", for: key)
 
 Create a new instance per test to ensure each test starts from a clean state.
 
+`InMemoryKeychain` runs the same engine as `Keychain`, so it follows the real keychain's
+rules. A key without an access group matches items saved under any access group, and bulk
+deletes that include synchronizable items remove both synchronizable and local items.
+
 ### Conditional APIs
 
 When the `observation` trait is enabled, `InMemoryKeychain` implements

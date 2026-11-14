@@ -1,0 +1,86 @@
+import SwiftyChainCore
+import SwiftyChainSecretService
+import Testing
+
+@Suite("Secret Service error mapping")
+struct SecretServiceErrorsTests {
+    private static let noProvider = SecretServiceUnavailability.noProvider.error
+
+    @Test(
+        arguments: [
+            (SecretServiceFailure(domain: "secret-error", code: 2), KeychainError.userPresenceRequired),
+            (SecretServiceFailure(domain: "secret-error", code: 3), .itemNotFound),
+            (SecretServiceFailure(domain: "secret-error", code: 4), .duplicateItem),
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 19), .authenticationFailed),
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 24), .timedOut),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 4), .timedOut),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 9), .authenticationFailed),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 2), noProvider),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 3), noProvider),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 25), noProvider),
+            (SecretServiceFailure(domain: "secret-error", code: 1), .operationFailed(1)),
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 0), .operationFailed(0)),
+        ]
+    )
+    func mapsFailures(_ failure: SecretServiceFailure, _ expected: KeychainError) {
+        #expect(SecretServiceErrors.keychainError(for: failure, timerFired: false) == expected)
+    }
+
+    @Test
+    func ourTimeoutWinsOverTheCancellationError() {
+        let cancelled = SecretServiceFailure(domain: "g-io-error-quark", code: 19)
+
+        #expect(SecretServiceErrors.keychainError(for: cancelled, timerFired: true) == .timedOut)
+    }
+
+    @Test
+    func unavailabilityReasonsAreDistinct() {
+        let reasons: [SecretServiceUnavailability] = [
+            .libraryMissing, .libraryTooOld, .dynamicLoadingUnavailable, .noSessionBus, .noProvider,
+            .noDefaultCollection,
+        ]
+
+        #expect(Set(reasons.map { String(describing: $0.error) }).count == reasons.count)
+    }
+
+    @Test
+    func recognizesMissingObjects() {
+        #expect(SecretServiceErrors.isNoSuchObject(SecretServiceFailure(domain: "secret-error", code: 3)))
+        #expect(!SecretServiceErrors.isNoSuchObject(SecretServiceFailure(domain: "secret-error", code: 2)))
+        #expect(!SecretServiceErrors.isNoSuchObject(SecretServiceFailure(domain: "g-io-error-quark", code: 3)))
+    }
+
+    @Test
+    func aSlowSessionBusIsATimeoutNotUnavailability() {
+        let cancelled = SecretServiceFailure(domain: "g-io-error-quark", code: 19)
+        let timedOut = SecretServiceFailure(domain: "g-io-error-quark", code: 24)
+        let notFound = SecretServiceFailure(domain: "g-io-error-quark", code: 1)
+        let noBus = SecretServiceUnavailability.noSessionBus.error
+
+        #expect(SecretServiceErrors.sessionBusError(for: cancelled, timerFired: true) == .timedOut)
+        #expect(SecretServiceErrors.sessionBusError(for: nil, timerFired: true) == .timedOut)
+        #expect(SecretServiceErrors.sessionBusError(for: timedOut, timerFired: false) == .timedOut)
+        #expect(SecretServiceErrors.sessionBusError(for: notFound, timerFired: false) == noBus)
+        #expect(SecretServiceErrors.sessionBusError(for: nil, timerFired: false) == noBus)
+    }
+
+    @Test
+    func onlyConnectionFailuresResetTheConnection() {
+        #expect(!SecretServiceErrors.shouldResetConnection(after: .itemNotFound))
+        #expect(!SecretServiceErrors.shouldResetConnection(after: .duplicateItem))
+        #expect(!SecretServiceErrors.shouldResetConnection(after: .userPresenceRequired))
+        #expect(!SecretServiceErrors.shouldResetConnection(after: .authenticationFailed))
+        #expect(SecretServiceErrors.shouldResetConnection(after: .timedOut))
+        #expect(SecretServiceErrors.shouldResetConnection(after: .operationFailed(1)))
+        #expect(SecretServiceErrors.shouldResetConnection(after: Self.noProvider))
+    }
+
+    @Test
+    func recognizesStaleConnections() {
+        #expect(SecretServiceErrors.isStaleConnection(SecretServiceFailure(domain: "g-dbus-error-quark", code: 2)))
+        #expect(SecretServiceErrors.isStaleConnection(SecretServiceFailure(domain: "g-dbus-error-quark", code: 3)))
+        #expect(SecretServiceErrors.isStaleConnection(SecretServiceFailure(domain: "g-dbus-error-quark", code: 15)))
+        #expect(!SecretServiceErrors.isStaleConnection(SecretServiceFailure(domain: "g-dbus-error-quark", code: 12)))
+        #expect(!SecretServiceErrors.isStaleConnection(SecretServiceFailure(domain: "secret-error", code: 2)))
+    }
+}

@@ -5,6 +5,8 @@ import Testing
 @testable import SwiftyChain
 
 private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
+    let capabilities: SecureStorageCapabilities = .all
+
     private struct GenericIdentity: Hashable, Sendable {
         let service: String?
         let account: String?
@@ -228,6 +230,8 @@ private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
 }
 
 private struct UnexpectedResultSecureStorageBackend: SecureStorageBackend {
+    let capabilities: SecureStorageCapabilities = .all
+
     func add(_ query: KeychainQuery, data: Data) throws {}
 
     func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
@@ -246,6 +250,8 @@ private struct UnexpectedResultSecureStorageBackend: SecureStorageBackend {
 }
 
 private struct AlwaysFailingSecureStorageBackend: SecureStorageBackend {
+    let capabilities: SecureStorageCapabilities = .all
+
     let error: KeychainError
 
     func add(_ query: KeychainQuery, data: Data) throws {
@@ -266,6 +272,8 @@ private struct AlwaysFailingSecureStorageBackend: SecureStorageBackend {
 }
 
 private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, Sendable {
+    let capabilities: SecureStorageCapabilities = .all
+
     private let queries = Mutex<[KeychainQuery]>([])
 
     func add(_ query: KeychainQuery, data: Data) throws {}

@@ -36,6 +36,8 @@ extension KeychainError {
             "accessGroupDenied"
         case .platformUnsupported:
             "platformUnsupported"
+        case .timedOut:
+            "timedOut"
         }
     }
 }

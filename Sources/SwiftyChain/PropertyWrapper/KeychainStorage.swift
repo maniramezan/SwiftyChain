@@ -1,6 +1,4 @@
 import Foundation
-import OSLog
-import Security
 import Synchronization
 
 /// Synchronous, `@AppStorage`-shaped access to a single optional keychain value.
@@ -43,6 +41,7 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
     ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
+    ///     Apple platforms only; on Linux, `true` makes operations throw ``KeychainError/platformUnsupported(_:)``.
     public init(
         _ account: String,
         service: String,
@@ -53,7 +52,7 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
         self.init(
             account,
             service: service,
-            backend: AppleKeychainBackend(),
+            backend: SecureStorageKeychainBackend(PlatformDefaultBackend.make()),
             accessGroup: accessGroup,
             accessibility: accessibility,
             isSynchronizable: isSynchronizable
@@ -104,9 +103,15 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
                 errorBox.value = nil
                 return nil
             } catch let error as KeychainError {
-                SwiftyChainLoggers.storage.error(
-                    "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                )
+                if error.isExpectedOutcome {
+                    SwiftyChainLoggers.storage.debug(
+                        "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                } else {
+                    SwiftyChainLoggers.storage.error(
+                        "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                }
                 errorBox.value = error
                 return nil
             } catch {
@@ -166,9 +171,15 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
             case .success:
                 errorBox.value = nil
             case .failure(let error as KeychainError):
-                SwiftyChainLoggers.storage.error(
-                    "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                )
+                if error.isExpectedOutcome {
+                    SwiftyChainLoggers.storage.debug(
+                        "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                } else {
+                    SwiftyChainLoggers.storage.error(
+                        "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
+                    )
+                }
                 errorBox.value = error
             case .failure:
                 SwiftyChainLoggers.storage.error(
