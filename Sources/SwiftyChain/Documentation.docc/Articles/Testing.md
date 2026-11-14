@@ -324,7 +324,9 @@ uses all features available in memory on the host. For a custom subset, pass
 `InMemoryKeychainBackend(capabilities:)` to `Keychain(backend:)`. NUL rejection stays in the
 real Linux backend because it depends on libsecret's C string representation.
 
-Platform-backed storage writes reach `Keychain.shared` observers. Custom backend engines
-have independent registries. Data-protection and access-control tests construct queries;
-verifying authentication requires a signed, entitled Apple host. Linux and WASI behavior
+Platform-backed storage writes reach `Keychain.shared` observers when both use the same
+macOS store. Custom backend engines
+have independent registries. Data-protection and access-control behavior is tested against
+the real keychain inside signed host apps; see `scripts/run-keychain-host-tests.sh`.
+Verifying an actual authentication prompt still needs a person at the device. Linux and WASI behavior
 is verified in CI rather than inferred from a passing macOS test run.

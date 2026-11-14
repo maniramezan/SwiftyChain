@@ -21,14 +21,14 @@ public struct KeychainDeleteQuery: Sendable, Hashable {
     public let service: String?
     /// The access group to filter by, or `nil` for the default group.
     public let accessGroup: String?
-    /// When `true`, iCloud-synchronized generic-password items are included in the deletion.
-    /// This option has no effect for internet-password items. Defaults to `true`.
+    /// When `true`, iCloud-synchronized items are included in the deletion. Applies to
+    /// generic and internet passwords. Defaults to `true`.
     public let includeSynchronizable: Bool
-    /// When `true`, only iCloud-synchronized generic-password items are deleted; non-synchronizable items are left intact.
+    /// When `true`, only iCloud-synchronized items are deleted; non-synchronizable items
+    /// are left intact. Applies to generic and internet passwords.
     ///
-    /// Only honored for generic-password queries. An internet-password query deletes
-    /// **every** matching item, synchronizable or not, whether or not this flag is set —
-    /// keep ``onlySynchronizable``-style filtering to ``KeychainItemClass/genericPassword``.
+    /// Takes precedence over ``includeSynchronizable``. Cryptographic keys are never
+    /// synchronizable, so a key query with this flag throws ``KeychainError/invalidArgument(_:)``.
     public let onlySynchronizable: Bool
     /// The item class to target. Defaults to ``KeychainItemClass/genericPassword``.
     public let itemClass: KeychainItemClass
@@ -41,8 +41,8 @@ public struct KeychainDeleteQuery: Sendable, Hashable {
     ///     ``KeychainError/platformUnsupported(_:)``, because every app built on SwiftyChain
     ///     shares the same Secret Service schemas.
     ///   - accessGroup: The access group to match. Pass `nil` for the default group.
-    ///   - includeSynchronizable: Include iCloud-synchronized generic-password items. Ignored for internet passwords. Defaults to `true`.
-    ///   - onlySynchronizable: Delete only iCloud-synchronized generic-password items. Ignored for internet passwords — such a query deletes every matching internet password. Defaults to `false`.
+    ///   - includeSynchronizable: Include iCloud-synchronized generic and internet passwords. Defaults to `true`.
+    ///   - onlySynchronizable: Delete only iCloud-synchronized generic and internet passwords. Defaults to `false`.
     ///   - itemClass: The keychain item class to target. Defaults to ``KeychainItemClass/genericPassword``.
     public init(
         service: String? = nil,

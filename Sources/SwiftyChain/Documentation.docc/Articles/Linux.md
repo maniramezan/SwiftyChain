@@ -73,7 +73,15 @@ Each request to the keyring gives up after 30 seconds and throws ``KeychainError
 so an unanswered prompt or an unresponsive keyring daemon can't block your app forever.
 The 30 seconds include time spent waiting for another SwiftyChain call in the same process
 to finish, so calls queued behind an unanswered prompt all time out together rather than
-one after another. A slow or hung D-Bus session bus also throws ``KeychainError/timedOut``,
+one after another.
+
+A keyring daemon that stops answering altogether is caught sooner. Every two seconds, a
+running call and each call waiting behind it ping the daemon. If it doesn't answer within
+a second, they throw ``KeychainError/timedOut`` right away, and later calls do the same
+after a single ping until the daemon answers again. An open unlock prompt doesn't count as
+a hang, because the daemon keeps answering pings while it waits for the user.
+
+A slow or hung D-Bus session bus also throws ``KeychainError/timedOut``,
 not ``KeychainError/platformUnsupported(_:)``, because it may recover. Most operations
 make one request. ``Keychain/upsert(_:for:)`` makes two when the item already exists (a
 save that finds the duplicate, then an update), so it can wait up to 60 seconds.

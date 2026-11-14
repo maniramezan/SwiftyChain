@@ -35,9 +35,13 @@ Synchronizable items reject `ThisDeviceOnly` accessibility and access control wi
 filters. Cryptographic bulk deletion has no service: scope it by access group instead.
 
 `saveCryptoKey` throws on duplicates. `upsertCryptoKey` updates in place without deleting
-first. Replacement material must be exportable. macOS legacy-store material updates throw
-`invalidArgument`; use the data-protection store. Signed-host verification of that update
-path remains necessary.
+first. Replacement material must be exportable and have the stored key's type, class, and
+size; a different key throws `invalidArgument` and leaves the stored key in place. Adding
+access control without an accessibility keeps the item's stored accessibility. Crypto
+references without an access group match a key in any group, in memory as on Apple
+platforms. macOS legacy-store material updates throw
+`invalidArgument`; use the data-protection store. Saving a key whose tag already exists
+throws `duplicateItem`, whatever the new key's material or type.
 
 ### Errors
 
@@ -73,8 +77,11 @@ Authentication uses the system prompt; 2.0 has no `LAContext` parameter.
 
 ### Observation and execution
 
-Platform-backed `Keychain` instances and `KeychainStorage` share observers, including those
-registered with `Keychain.shared`. Custom backends have a registry per engine. Internet events
+Platform-backed `Keychain` instances and `KeychainStorage` that use the same store share
+observers, including those registered with `Keychain.shared`. On macOS, the legacy and
+data-protection stores have separate observers. Each `Keychain` instance runs its calls on
+its own serial queue. On Linux, Secret Service calls are still serialized process-wide; a hung keyring daemon is
+detected by a liveness ping and fails calls within seconds rather than at the timeout. Custom backends have a registry per engine. Internet events
 use `server` and have a `nil` service; generic events use `service` and have a `nil` server.
 Use `observeKeychainChanges(server:)` for internet passwords.
 

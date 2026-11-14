@@ -29,8 +29,9 @@ let keychain: any KeychainProtocol = InMemoryKeychain() // from SwiftyChainTesti
 
 ### Observation and @KeychainStorage
 
-Platform-backed instances and ``KeychainStorage`` share observers, including
-``shared``. Custom backends have a registry per engine. Internet-password events
+Platform-backed instances and ``KeychainStorage`` that use the same store share
+observers, including ``shared``. On macOS, the legacy and data-protection stores have
+separate observers. Custom backends have a registry per engine. Internet-password events
 name a server instead of a service. See <doc:MigratingTo2>.
 
 ## Topics

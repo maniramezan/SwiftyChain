@@ -130,7 +130,8 @@ accepts `configuration:` and `accessControl:`.
 
 Version 2.0 makes accessibility optional, preserves it on updates when omitted, and excludes
 write policy from key identity. `saveCryptoKey` now throws on duplicates; `upsertCryptoKey`
-updates without deleting. Legacy macOS crypto material replacements are rejected; use the
+updates without deleting and rejects a replacement of a different key type, class, or size.
+Legacy macOS crypto material replacements are rejected; use the
 data-protection store. See [Migrating to 2.0](Sources/SwiftyChain/Documentation.docc/Articles/MigratingTo2.md)
 for backend, error, and observation changes.
 
@@ -157,7 +158,7 @@ xcrun swift test --traits "observation,cryptography"
 
 ## @KeychainStorage Limitations
 
-`@KeychainStorage` uses the same engine and validation as `Keychain`, and platform-backed writes reach shared observers. It is synchronous and can block its calling thread for keychain interaction. Prefer the async actor for protected items. Actor calls use a dedicated serial dispatch queue on Apple and Linux.
+`@KeychainStorage` uses the same engine and validation as `Keychain`, and platform-backed writes reach observers of the same store. It is synchronous and can block its calling thread for keychain interaction. Prefer the async actor for protected items. Each actor instance runs its calls on its own serial dispatch queue on Apple and Linux; on Linux, Secret Service calls are additionally serialized process-wide, and a hung keyring daemon is detected within seconds by a liveness ping.
 
 ## Testing
 
@@ -203,7 +204,7 @@ Optional features are guarded by traits. Enable them explicitly when building or
 xcrun swift test --traits "observation,cryptography"
 ```
 
-Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain.
+Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain. Data-protection and access-control tests run inside a host app: `scripts/run-keychain-host-tests.sh ios`, or `macos` with `DEVELOPMENT_TEAM` set.
 
 On Linux, run the same suite against GNOME Keyring. The helper script starts a private
 D-Bus session and a throwaway keyring in a temporary directory, so your own keyrings are

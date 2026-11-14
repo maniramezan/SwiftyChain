@@ -50,9 +50,15 @@ and fails clearly at runtime instead of storing secrets insecurely.
 
 ### Execution, observation, and macOS stores
 
-Apple and Linux actors run blocking calls on a dedicated serial dispatch queue wherever
-Dispatch is available. `KeychainStorage` runs on its calling thread using the same engine.
-Platform-backed engines share one observation registry. Custom backends have a separate
+Apple and Linux actors run blocking calls on a serial dispatch queue of their own wherever
+Dispatch is available, so a call waiting on a prompt or a slow custom backend only holds up
+its own instance. On Linux, the Secret Service backend additionally serializes every libsecret
+call in the process. Running and waiting calls ping the provider every two seconds, so a
+hung keyring daemon fails them with `timedOut` within a few seconds instead of at the
+30-second timeout, and later calls fail after a single ping until it answers again. A
+provider busy with an unlock prompt still answers pings, so prompts keep the full timeout. `KeychainStorage` runs on its calling thread using the same engine.
+Platform-backed engines for the same store share one observation registry; the macOS legacy
+and data-protection stores each have their own. Custom backends have a separate
 registry per engine. Internet events use `server`; generic events use `service`.
 
 On macOS, `KeychainConfiguration` selects the legacy login keychain by default or opts in

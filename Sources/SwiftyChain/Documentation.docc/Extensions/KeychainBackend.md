@@ -26,7 +26,7 @@ Declare optional features in ``capabilities``. `SwiftyChainTesting.InMemoryKeych
 accepts a capability set for emulation. Crypto storage uses the public `KeychainCryptoBackend`
 refinement with the `cryptography` trait on Apple platforms.
 
-Platform-backed engines share observers. A custom backend gets a separate observer registry
+Platform-backed engines for the same store share observers. A custom backend gets a separate observer registry
 per engine, including when passed to multiple `Keychain` or `KeychainStorage` instances.
 See <doc:MigratingTo2>.
 

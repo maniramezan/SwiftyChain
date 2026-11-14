@@ -4,7 +4,8 @@
 
 `@KeychainStorage` provides synchronous, `@AppStorage`-shaped access to
 optional keychain values. It uses the same engine as ``Keychain``. Platform-backed
-wrappers emit events to observers shared with ``Keychain/shared``; a custom backend
+wrappers emit events to observers shared with platform-backed ``Keychain`` instances that use
+the same store, such as ``Keychain/shared`` for the default store; a custom backend
 has a separate observer registry per engine. Calls run synchronously on the caller's thread.
 
 Use the initializer when you want property-wrapper ergonomics without
