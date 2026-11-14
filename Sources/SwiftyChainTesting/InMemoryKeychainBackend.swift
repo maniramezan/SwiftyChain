@@ -168,7 +168,13 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
             let accessGroup: String?
         }
 
-        private let cryptoKeys = Mutex<[CryptoIdentity: StoredSecKey]>([:])
+        private struct CryptoItem: Sendable {
+            var key: StoredSecKey
+            var accessibility: KeychainAccessibility?
+            var accessControl: KeychainAccessControl?
+        }
+
+        private let cryptoKeys = Mutex<[CryptoIdentity: CryptoItem]>([:])
     #endif
 }
 
@@ -180,15 +186,20 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
                 if keys[identity] != nil {
                     throw KeychainError.duplicateItem
                 }
-                keys[identity] = StoredSecKey(key)
+                keys[identity] = CryptoItem(
+                    key: StoredSecKey(key), accessibility: attributes.accessibility,
+                    accessControl: attributes.accessControl)
             }
         }
 
         public func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
             let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
             try cryptoKeys.withLock { keys in
-                guard keys[identity] != nil else { throw KeychainError.itemNotFound }
-                keys[identity] = StoredSecKey(key)
+                guard var item = keys[identity] else { throw KeychainError.itemNotFound }
+                item.key = StoredSecKey(key)
+                if let accessibility = attributes.accessibility { item.accessibility = accessibility }
+                if let accessControl = attributes.accessControl { item.accessControl = accessControl }
+                keys[identity] = item
             }
         }
 
@@ -197,7 +208,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
             guard let stored = cryptoKeys.withLock({ $0[identity] }) else {
                 throw KeychainError.itemNotFound
             }
-            return stored.rawValue
+            return stored.key.rawValue
         }
 
         public func deleteCryptoKey(query: CryptoKeyQuery) throws {

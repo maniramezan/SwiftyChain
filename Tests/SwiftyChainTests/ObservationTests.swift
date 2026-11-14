@@ -112,3 +112,20 @@
         }
     #endif
 #endif
+
+#if Observation
+    @Test(.timeLimit(.minutes(1)))
+    func customBackendEnginesKeepTheirOwnObservers() async throws {
+        let backend = InMemoryKeychainBackend()
+        let observer = Keychain(backend: backend)
+        let other = Keychain(backend: backend)
+        let service = "tests.observation.custom.\(UUID().uuidString)"
+        let stream = await observer.observeKeychainChanges(service: service)
+        let storage = KeychainStorage<String>("storage", service: service, backend: backend)
+        storage.wrappedValue = "value"
+        try await other.save("value", for: KeychainKey<String>(service: service, account: "other"))
+        try await observer.save("value", for: KeychainKey<String>(service: service, account: "own"))
+        var iterator = stream.makeAsyncIterator()
+        #expect(await iterator.next()?.account == "own")
+    }
+#endif

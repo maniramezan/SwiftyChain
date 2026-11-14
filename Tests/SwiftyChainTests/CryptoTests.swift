@@ -227,34 +227,37 @@
         #expect(backend.deletedQueries.isEmpty)
     }
 
-    @Test(
-        .enabled(if: ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1"))
-    func appleCryptoUpsertPreservesTheOriginalWhenLegacyStoreRejectsUpdate() async throws {
-        let keychain = Keychain()
-        let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.apple.upsert.\(UUID().uuidString)")
-        let first = try makeECKey()
-        let second = try makeECKey()
-        do {
-            try await keychain.upsertCryptoKey(StoredSecKey(first), for: ref)
-            let original = try await keychain.loadCryptoKey(keyRef: ref)
-            let originalData = try #require(SecKeyCopyExternalRepresentation(original.rawValue, nil))
-            #expect(originalData == SecKeyCopyExternalRepresentation(first, nil))
-            await #expect(
-                throws: KeychainError.invalidArgument(
-                    "The macOS legacy store cannot replace cryptographic key material in place; use the data-protection store"
-                )
-            ) {
-                try await keychain.upsertCryptoKey(StoredSecKey(second), for: ref)
+    #if os(macOS)
+        @Test(
+            .enabled(if: ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1"))
+        func appleCryptoUpsertPreservesTheOriginalWhenLegacyStoreRejectsUpdate() async throws {
+            let keychain = Keychain()
+            let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.apple.upsert.\(UUID().uuidString)")
+            let first = try makeECKey()
+            let second = try makeECKey()
+            do {
+                try await keychain.upsertCryptoKey(StoredSecKey(first), for: ref)
+                let original = try await keychain.loadCryptoKey(keyRef: ref)
+                let originalData = try #require(SecKeyCopyExternalRepresentation(original.rawValue, nil))
+                #expect(originalData == SecKeyCopyExternalRepresentation(first, nil))
+                await #expect(
+                    throws: KeychainError.invalidArgument(
+                        "The macOS legacy store cannot replace cryptographic key material in place; use the data-protection store"
+                    )
+                ) {
+                    try await keychain.upsertCryptoKey(StoredSecKey(second), for: ref)
+                }
+                let stored = try await keychain.loadCryptoKey(keyRef: ref)
+                let data = try #require(SecKeyCopyExternalRepresentation(stored.rawValue, nil))
+                #expect(data == originalData)
+                try await keychain.deleteCryptoKey(keyRef: ref)
+            } catch {
+                try? await keychain.deleteCryptoKey(keyRef: ref)
+                throw error
             }
-            let stored = try await keychain.loadCryptoKey(keyRef: ref)
-            let data = try #require(SecKeyCopyExternalRepresentation(stored.rawValue, nil))
-            #expect(data == originalData)
-            try await keychain.deleteCryptoKey(keyRef: ref)
-        } catch {
-            try? await keychain.deleteCryptoKey(keyRef: ref)
-            throw error
         }
-    }
+
+    #endif
 
     private func makeECKey() throws -> SecKey {
         let attributes: [String: Any] = [
