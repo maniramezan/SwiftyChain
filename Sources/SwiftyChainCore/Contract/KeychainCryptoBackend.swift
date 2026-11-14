@@ -18,9 +18,12 @@
     public struct CryptoKeyAttributes: Sendable, Hashable {
         /// When the key can be used.
         public let accessibility: KeychainAccessibility?
+        /// Authentication required when accessing the stored item.
+        public let accessControl: KeychainAccessControl?
 
-        public init(accessibility: KeychainAccessibility? = nil) {
+        public init(accessibility: KeychainAccessibility? = nil, accessControl: KeychainAccessControl? = nil) {
             self.accessibility = accessibility
+            self.accessControl = accessControl
         }
     }
 

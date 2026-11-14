@@ -71,17 +71,21 @@ public struct KeychainAttributes: Sendable, Hashable {
     public let comment: String?
     /// When the item can be read.
     public let accessibility: KeychainAccessibility?
+    /// Authentication required when accessing the stored item.
+    public let accessControl: KeychainAccessControl?
 
     /// Creates a set of attributes. Every value defaults to `nil`.
     public init(
         data: Data? = nil,
         label: String? = nil,
         comment: String? = nil,
-        accessibility: KeychainAccessibility? = nil
+        accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil
     ) {
         self.data = data
         self.label = label
         self.comment = comment
         self.accessibility = accessibility
+        self.accessControl = accessControl
     }
 }

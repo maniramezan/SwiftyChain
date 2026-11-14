@@ -15,9 +15,14 @@ package enum KeychainOperation: Sendable, Hashable {
 package enum KeychainQueryValidator {
     package static func validate(
         _ query: KeychainQuery,
+        attributes: KeychainAttributes? = nil,
         for operation: KeychainOperation,
         against capabilities: KeychainBackendCapabilities
     ) throws {
+        if attributes?.accessControl != nil, !capabilities.contains(.accessControl) {
+            try reject(
+                "accessControl", message: "Access control is not supported by this keychain backend or configuration")
+        }
         if query.itemClass == .internetPassword, !capabilities.contains(.internetPasswords) {
             try reject("internetPasswords", message: "Internet passwords are not supported by this keychain backend")
         }

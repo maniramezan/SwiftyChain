@@ -7,10 +7,10 @@
 
     #if os(macOS)
         @Test(arguments: [KeychainConfiguration.MacOSStore.legacy, .dataProtection])
-        func macOSStoreFlagReachesEveryQuery(_ store: KeychainConfiguration.MacOSStore) {
+        func macOSStoreFlagReachesEveryQuery(_ store: KeychainConfiguration.MacOSStore) throws {
             let backend = AppleKeychainBackend(configuration: .init(macOSStore: store))
             let identity = KeychainQuery(service: "tests.store", account: "token")
-            let add = backend.addQuery(from: identity, attributes: .init())
+            let add = try backend.addQuery(from: identity, attributes: .init())
             let match = backend.matchQuery(from: identity)
             #expect((add[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
             #expect((match[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
@@ -21,6 +21,33 @@
                 #expect(
                     (crypto[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
             #endif
+        }
+    #endif
+
+    #if !os(tvOS)
+        @Test(arguments: KeychainAccessControl.allCases)
+        func accessControlReplacesAccessible(_ policy: KeychainAccessControl) throws {
+            let backend = AppleKeychainBackend(configuration: .init(macOSStore: .dataProtection))
+            let attributes = KeychainAttributes(data: Data(), accessibility: .afterFirstUnlock, accessControl: policy)
+            let add = try backend.addQuery(from: KeychainQuery(service: "tests.control"), attributes: attributes)
+            let update = try backend.updateAttributes(from: attributes)
+            for dictionary in [add, update] {
+                let control = try #require(dictionary[kSecAttrAccessControl as String])
+                #expect(CFGetTypeID(control as CFTypeRef) == SecAccessControlGetTypeID())
+                #expect(dictionary[kSecAttrAccessible as String] == nil)
+            }
+        }
+    #endif
+
+    #if os(macOS)
+        @Test
+        func legacyStoreRejectsAccessControl() {
+            let backend = AppleKeychainBackend()
+            #expect(backend.capabilities.contains(.accessControl) == false)
+            #expect(throws: KeychainError.self) {
+                try backend.addQuery(
+                    from: .init(service: "tests.control"), attributes: .init(accessControl: .userPresence))
+            }
         }
     #endif
 
@@ -62,7 +89,7 @@
 
     @Test
     func addQueryWritesValuesAlongsideIdentity() throws {
-        let query = AppleKeychainBackend().addQuery(
+        let query = try AppleKeychainBackend().addQuery(
             from: KeychainQuery(itemClass: .genericPassword, service: "tests.add", account: "a"),
             attributes: KeychainAttributes(
                 data: Data("secret".utf8),
@@ -82,8 +109,8 @@
     }
 
     @Test
-    func updateLeavesUnsetValuesUntouched() {
-        let changes = AppleKeychainBackend().updateAttributes(from: KeychainAttributes(data: Data("new".utf8)))
+    func updateLeavesUnsetValuesUntouched() throws {
+        let changes = try AppleKeychainBackend().updateAttributes(from: KeychainAttributes(data: Data("new".utf8)))
 
         #expect(changes.count == 1)
         #expect(changes[kSecValueData as String] as? Data == Data("new".utf8))

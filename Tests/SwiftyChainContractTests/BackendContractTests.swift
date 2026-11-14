@@ -689,3 +689,37 @@ struct KeyIdentityTests {
         }
     }
 }
+
+struct AccessControlContractTests {
+    @Test(arguments: BackendFixture.available)
+    func accessControlFollowsCapabilities(_ fixture: BackendFixture) async throws {
+        let backend = fixture.make()
+        let keychain = Keychain(backend: backend)
+        let key = KeychainKey<String>(
+            service: "tests.control.\(UUID().uuidString)", account: "token", accessControl: .userPresence)
+        let internet = InternetPasswordKey(server: key.service, account: "alice", accessControl: .biometryCurrentSet)
+        if backend.capabilities.contains(.accessControl) {
+            guard fixture.isIsolated else { return }
+            try await keychain.save("secret", for: key)
+            #expect(try await keychain.load(key: key) == "secret")
+            try await keychain.saveInternetPassword("password", for: internet)
+            #expect(try await keychain.loadInternetPassword(for: internet) == "password")
+        } else {
+            let error = KeychainError.platformUnsupported(
+                "Access control is not supported by this keychain backend or configuration")
+            await #expect(throws: error) { try await keychain.save("secret", for: key) }
+            await #expect(throws: error) { try await keychain.saveInternetPassword("password", for: internet) }
+        }
+    }
+
+    @Test
+    func synchronizableAccessControlIsRejectedBeforeWriting() async throws {
+        let keychain = InMemoryKeychain()
+        let key = KeychainKey<String>(
+            service: "tests.control", account: "token", accessControl: .userPresence, isSynchronizable: true)
+        await #expect(throws: KeychainError.invalidArgument("A synchronizable item can't use access control")) {
+            try await keychain.save("secret", for: key)
+        }
+        #expect(try await keychain.exists(key: key) == false)
+    }
+}

@@ -24,6 +24,7 @@ extension KeychainKey {
         account: String,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
         isSynchronizable: Bool = false
     ) -> Self {
         Self(
@@ -31,6 +32,7 @@ extension KeychainKey {
             account: account,
             accessGroup: accessGroup,
             accessibility: accessibility,
+            accessControl: accessControl,
             isSynchronizable: isSynchronizable
         )
     }
