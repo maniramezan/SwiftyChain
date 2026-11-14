@@ -37,7 +37,8 @@
         /// Creates a keychain change event.
         ///
         /// - Parameters:
-        ///   - service: The service identifier.
+        ///   - service: The generic-password service identifier, or `nil`.
+        ///   - server: The internet-password server, or `nil`.
         ///   - account: The account identifier, or `nil` for bulk operations.
         ///   - kind: The kind of change.
         public init(service: String? = nil, server: String? = nil, account: String? = nil, kind: Kind) {

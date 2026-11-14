@@ -310,8 +310,21 @@ dbus-run-session -- bash -c '
 ```
 
 The keyring unlocks asynchronously. If the first call races the unlock it throws
-``KeychainError/userPresenceRequired``, so wait until the default collection reports it is
+``KeychainError/interactionNotAllowed``, so wait until the default collection reports it is
 unlocked before running tests. SwiftyChain's own
 [`scripts/with-gnome-keyring.sh`](https://github.com/maniramezan/SwiftyChain/blob/main/scripts/with-gnome-keyring.sh)
 does this, keeps the keyring in a temporary directory instead of `~/.local/share/keyrings`,
 and stops only the daemons it started.
+
+## Emulate platform capabilities
+
+`InMemoryKeychain(emulating: .linux)` rejects synchronizable requests, access control,
+cryptographic storage, and unscoped bulk deletion. `InMemoryKeychain(emulating: .apple)`
+uses all features available in memory on the host. For a custom subset, pass
+`InMemoryKeychainBackend(capabilities:)` to `Keychain(backend:)`. NUL rejection stays in the
+real Linux backend because it depends on libsecret's C string representation.
+
+Platform-backed storage writes reach `Keychain.shared` observers. Custom backend engines
+have independent registries. Data-protection and access-control tests construct queries;
+verifying authentication requires a signed, entitled Apple host. Linux and WASI behavior
+is verified in CI rather than inferred from a passing macOS test run.

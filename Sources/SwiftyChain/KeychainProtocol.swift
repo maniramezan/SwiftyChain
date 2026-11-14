@@ -117,9 +117,8 @@ extension KeychainProtocol {
         /// The stream runs until the caller drops the reference or cancels the enclosing task.
         /// Multiple concurrent observers on the same service are each notified independently.
         ///
-        /// > Note: Changes made through ``KeychainStorage`` bypass the ``Keychain`` actor
-        /// > and do **not** appear in this stream. Write through ``Keychain`` directly if
-        /// > change notifications are required.
+        /// Platform-backed engines share observers with ``KeychainStorage`` and other
+        /// platform-backed instances. Custom backends use a registry per engine.
         func observeKeychainChanges(
             service: String,
             accessGroup: String?
