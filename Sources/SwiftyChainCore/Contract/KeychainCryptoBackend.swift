@@ -35,14 +35,16 @@
     public protocol KeychainCryptoBackend: KeychainBackend {
         /// Stores a new key.
         ///
-        /// - Throws: ``KeychainError/duplicateItem`` when a key with the same tag and
-        ///   access group exists.
+        /// - Throws: ``KeychainError/duplicateItem`` when a key with the same tag exists in
+        ///   the same access group, or in any group when `query.accessGroup` is `nil`. Keys
+        ///   are identified by tag and access group alone, whatever their material or type.
         func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws
 
         /// Updates an existing key in place. Fails without deleting the original key.
         ///
-        /// - Throws: ``KeychainError/itemNotFound`` when no key matches. A platform may
-        ///   reject updates to non-exportable keys or changes to the key's algorithm.
+        /// - Throws: ``KeychainError/itemNotFound`` when no key matches, and
+        ///   ``KeychainError/invalidArgument(_:)`` when `key` has a different type, class,
+        ///   or size than the stored key. A platform may also reject non-exportable keys.
         func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws
 
         /// Returns the matching key.

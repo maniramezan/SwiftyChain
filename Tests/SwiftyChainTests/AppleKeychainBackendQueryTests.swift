@@ -39,6 +39,64 @@
         }
     #endif
 
+    #if !os(tvOS)
+        @Test
+        func addingAccessControlKeepsTheStoredAccessibility() throws {
+            let backend = AppleKeychainBackend(configuration: .init(macOSStore: .dataProtection))
+            let stored = try AppleKeychainBackend.sharedProtection([kSecAttrAccessibleAfterFirstUnlock])
+            let update = try backend.updateAttributes(
+                from: KeychainAttributes(accessControl: .userPresence), storedProtection: stored)
+            let control = try #require(update[kSecAttrAccessControl as String])
+            // The policy's description starts with its protection class: "ck" is
+            // kSecAttrAccessibleAfterFirstUnlock, "ak" is kSecAttrAccessibleWhenUnlocked.
+            let description = String(describing: control)
+            #expect(description.contains(": ck;"))
+        }
+
+        @Test
+        func accessibilityOnAnAccessControlUpdateWinsOverTheStoredValue() throws {
+            let backend = AppleKeychainBackend(configuration: .init(macOSStore: .dataProtection))
+            let update = try backend.updateAttributes(
+                from: KeychainAttributes(accessibility: .whenUnlocked, accessControl: .userPresence),
+                storedProtection: kSecAttrAccessibleAfterFirstUnlock)
+            let control = try #require(update[kSecAttrAccessControl as String])
+            #expect(String(describing: control).contains(": ak;"))
+        }
+    #endif
+
+    @Test
+    func sharedProtectionRejectsMixedAccessibility() throws {
+        #expect(try AppleKeychainBackend.sharedProtection([]) == nil)
+        #expect(throws: KeychainError.self) {
+            try AppleKeychainBackend.sharedProtection([
+                kSecAttrAccessibleAfterFirstUnlock, kSecAttrAccessibleWhenUnlocked,
+            ])
+        }
+    }
+
+    @Test
+    func everyAccessibilityIsProbed() {
+        #expect(Set(KeychainAccessibility.allSecValues.map { $0 as String }).count == 5)
+    }
+
+    #if Cryptography
+        @Test
+        func cryptoKeyShapeKeepsOnlyTypeClassAndSize() {
+            let attributes: [String: Any] = [
+                kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom as String,
+                kSecAttrKeyClass as String: kSecAttrKeyClassPrivate as String,
+                kSecAttrKeySizeInBits as String: 256,
+                kSecAttrApplicationLabel as String: Data([1, 2, 3]),
+                kSecAttrIsPermanent as String: false,
+            ]
+            let shape = AppleKeychainBackend.cryptoKeyShape(of: attributes)
+            #expect(
+                Set(shape.keys)
+                    == Set([kSecAttrKeyType, kSecAttrKeyClass, kSecAttrKeySizeInBits].map { $0 as String }))
+            #expect(shape[kSecAttrKeyType as String] as? String == kSecAttrKeyTypeECSECPrimeRandom as String)
+        }
+    #endif
+
     #if os(macOS)
         @Test
         func legacyStoreRejectsAccessControl() {

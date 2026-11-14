@@ -227,6 +227,41 @@
         #expect(backend.deletedQueries.isEmpty)
     }
 
+    @Test
+    func inMemoryCryptoUpsertRejectsADifferentKeyType() async throws {
+        let keychain = InMemoryKeychain()
+        let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.upsert.type")
+        let ec = try makeECKey()
+        try await keychain.upsertCryptoKey(StoredSecKey(ec), for: ref)
+        await #expect(
+            throws: KeychainError.invalidArgument(
+                "The replacement key's type, class, or size differs from the stored key; delete the stored key first"
+            )
+        ) {
+            try await keychain.upsertCryptoKey(StoredSecKey(try makeRSAKey()), for: ref)
+        }
+        #expect(CFEqual(try await keychain.loadCryptoKey(keyRef: ref).rawValue, ec))
+    }
+
+    @Test
+    func inMemoryCryptoReferenceWithoutAccessGroupMatchesAnyGroup() async throws {
+        let keychain = InMemoryKeychain()
+        let grouped = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.group", accessGroup: "group.tests")
+        let anyGroup = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.group")
+        let other = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.group", accessGroup: "group.other")
+        let key = try makeECKey()
+        try await keychain.saveCryptoKey(StoredSecKey(key), for: grouped)
+
+        #expect(CFEqual(try await keychain.loadCryptoKey(keyRef: anyGroup).rawValue, key))
+        await #expect(throws: KeychainError.itemNotFound) {
+            try await keychain.loadCryptoKey(keyRef: other)
+        }
+        try await keychain.deleteCryptoKey(keyRef: anyGroup)
+        await #expect(throws: KeychainError.itemNotFound) {
+            try await keychain.loadCryptoKey(keyRef: grouped)
+        }
+    }
+
     #if os(macOS)
         @Test(
             .enabled(if: ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1"))
@@ -260,9 +295,17 @@
     #endif
 
     private func makeECKey() throws -> SecKey {
+        try makeKey(type: kSecAttrKeyTypeECSECPrimeRandom, bits: 256)
+    }
+
+    private func makeRSAKey() throws -> SecKey {
+        try makeKey(type: kSecAttrKeyTypeRSA, bits: 2048)
+    }
+
+    private func makeKey(type: CFString, bits: Int) throws -> SecKey {
         let attributes: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecAttrKeySizeInBits as String: 256,
+            kSecAttrKeyType as String: type,
+            kSecAttrKeySizeInBits as String: bits,
         ]
         var error: Unmanaged<CFError>?
         guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {

@@ -103,9 +103,11 @@
 
         /// Adds a key or updates its material in place when it already exists.
         ///
-        /// Apple requires exportable material for an update. The macOS legacy store
-        /// rejects material updates with ``KeychainError/invalidArgument(_:)``. Unsupported updates fail
-        /// without deleting the stored key.
+        /// Apple requires exportable material for an update, with the stored key's type,
+        /// class, and size; a different key throws ``KeychainError/invalidArgument(_:)``.
+        /// The macOS legacy store rejects material updates with
+        /// ``KeychainError/invalidArgument(_:)``. Unsupported updates fail without deleting
+        /// the stored key.
         public func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
             try engine.upsertCryptoKey(key, for: keyRef)
         }

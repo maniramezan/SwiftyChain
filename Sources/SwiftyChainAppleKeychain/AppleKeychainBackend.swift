@@ -3,6 +3,10 @@
     import Security
     import SwiftyChainCore
 
+    #if canImport(LocalAuthentication)
+        import LocalAuthentication
+    #endif
+
     /// The ``KeychainBackend`` for Apple platforms, backed by the Security framework.
     package struct AppleKeychainBackend: KeychainBackend {
         package let capabilities: KeychainBackendCapabilities
@@ -98,9 +102,14 @@
 
         package func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
             logSecurityCall("SecItemUpdate", query: query)
+            let match = matchQuery(from: query)
+            var storedProtection: CFString?
+            if attributes.accessControl != nil, attributes.accessibility == nil {
+                storedProtection = try self.storedProtection(matching: match)
+            }
             let status = SecItemUpdate(
-                matchQuery(from: query) as CFDictionary,
-                try updateAttributes(from: attributes) as CFDictionary
+                match as CFDictionary,
+                try updateAttributes(from: attributes, storedProtection: storedProtection) as CFDictionary
             )
             try mapStatus(status)
             SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
@@ -150,7 +159,14 @@
         }
 
         /// The dictionary of changes `SecItemUpdate` receives.
-        package func updateAttributes(from attributes: KeychainAttributes) throws -> [String: Any] {
+        ///
+        /// - Parameter storedProtection: The `kSecAttrAccessible` value the matching items
+        ///   already have. An access-control policy is built with it when `attributes`
+        ///   names no accessibility, so adding access control doesn't change when an
+        ///   item can be read.
+        package func updateAttributes(
+            from attributes: KeychainAttributes, storedProtection: CFString? = nil
+        ) throws -> [String: Any] {
             var secAttributes: [String: Any] = [:]
             if let data = attributes.data {
                 secAttributes[kSecValueData as String] = data
@@ -163,13 +179,74 @@
             }
             secAttributes.merge(
                 try protectionAttributes(
-                    accessibility: attributes.accessibility, accessControl: attributes.accessControl)
+                    protection: attributes.accessibility?.secValue ?? storedProtection,
+                    accessControl: attributes.accessControl)
             ) { _, new in new }
             return secAttributes
         }
 
         package func protectionAttributes(
             accessibility: KeychainAccessibility?, accessControl: KeychainAccessControl?
+        ) throws -> [String: Any] {
+            try protectionAttributes(protection: accessibility?.secValue, accessControl: accessControl)
+        }
+
+        /// The `kSecAttrAccessible` value every item `match` selects shares, or `nil` when
+        /// no item has one SwiftyChain knows.
+        ///
+        /// Reading an item's attributes needs authentication on macOS when the item has an
+        /// access-control policy, so this probes each accessibility value with
+        /// ``itemExists(matching:)`` instead, which never prompts.
+        private func storedProtection(matching match: [String: Any]) throws -> CFString? {
+            let present = try KeychainAccessibility.allSecValues.filter { protection in
+                var probe = match
+                probe[kSecAttrAccessible as String] = protection
+                return try itemExists(matching: probe)
+            }
+            return try Self.sharedProtection(present)
+        }
+
+        /// The one protection value in `present`, or `nil` when it is empty.
+        ///
+        /// - Throws: ``KeychainError/invalidArgument(_:)`` when the matching items have
+        ///   different values, because one access-control policy can't keep each item's own
+        ///   accessibility.
+        package static func sharedProtection(_ present: [CFString]) throws -> CFString? {
+            guard present.count <= 1 else {
+                SwiftyChainLoggers.backend.debug("Matching items have different accessibility values")
+                throw KeychainError.invalidArgument(
+                    "The matching items have different accessibility values; pass an accessibility with the access control"
+                )
+            }
+            return present.first
+        }
+
+        /// Whether any item matches, without reading it and without prompting.
+        ///
+        /// A matching item protected by an access-control policy reports
+        /// `errSecInteractionNotAllowed` instead of being read, which still shows it exists.
+        private func itemExists(matching match: [String: Any]) throws -> Bool {
+            var probe = match
+            probe[kSecMatchLimit as String] = kSecMatchLimitOne
+            #if canImport(LocalAuthentication)
+                let context = LAContext()
+                context.interactionNotAllowed = true
+                probe[kSecUseAuthenticationContext as String] = context
+            #endif
+            let status = SecItemCopyMatching(probe as CFDictionary, nil)
+            switch status {
+            case errSecSuccess, errSecInteractionNotAllowed:
+                return true
+            case errSecItemNotFound:
+                return false
+            default:
+                try mapStatus(status)
+                return false
+            }
+        }
+
+        private func protectionAttributes(
+            protection: CFString?, accessControl: KeychainAccessControl?
         ) throws -> [String: Any] {
             if let accessControl {
                 #if os(tvOS)
@@ -189,7 +266,7 @@
                     var error: Unmanaged<CFError>?
                     guard
                         let control = SecAccessControlCreateWithFlags(
-                            nil, (accessibility ?? .whenUnlocked).secValue, flags, &error
+                            nil, protection ?? KeychainAccessibility.whenUnlocked.secValue, flags, &error
                         )
                     else {
                         if let error { _ = error.takeRetainedValue() }
@@ -198,8 +275,8 @@
                     return [kSecAttrAccessControl as String: control]
                 #endif
             }
-            if let accessibility {
-                return [kSecAttrAccessible as String: accessibility.secValue]
+            if let protection {
+                return [kSecAttrAccessible as String: protection]
             }
             return [:]
         }
@@ -304,6 +381,14 @@
     }
 
     extension KeychainAccessibility {
+        /// The `kSecAttrAccessible` value of every case.
+        package static var allSecValues: [CFString] {
+            [
+                KeychainAccessibility.afterFirstUnlock, .afterFirstUnlockThisDeviceOnly, .whenUnlocked,
+                .whenUnlockedThisDeviceOnly, .whenPasscodeSetThisDeviceOnly,
+            ].map(\.secValue)
+        }
+
         package var secValue: CFString {
             switch self {
             case .afterFirstUnlock:
@@ -393,6 +478,13 @@
             )
                 throws
             {
+                // The keychain's uniqueness rule for keys includes the public-key hash, type,
+                // and size, so SecItemAdd accepts a second, different key under the same tag.
+                // SwiftyChain identifies a key by tag and access group, so it checks first.
+                if try itemExists(matching: cryptoSecQuery(from: query)) {
+                    SwiftyChainLoggers.backend.debug("SecItemAdd skipped: a key with this tag already exists")
+                    throw KeychainError.duplicateItem
+                }
                 var attributes = cryptoSecQuery(from: query)
                 attributes[kSecValueRef as String] = key
                 attributes.merge(
@@ -411,15 +503,48 @@
                         )
                     }
                 #endif
+                let match = cryptoSecQuery(from: query)
+                guard try itemExists(matching: match) else {
+                    throw KeychainError.itemNotFound
+                }
+                // The update only rewrites the key bytes, so it is limited to keys whose type,
+                // class, and size already describe the replacement. A key of another shape
+                // would end up holding bytes it can't decode. Matching on these attributes
+                // never prompts, unlike reading them.
+                let replacementAttributes = SecKeyCopyAttributes(key) as? [String: Any] ?? [:]
+                let sameShape = match.merging(Self.cryptoKeyShape(of: replacementAttributes)) { _, new in new }
+                guard try itemExists(matching: sameShape) else {
+                    SwiftyChainLoggers.backend.debug("Rejected a crypto key update that changes the key's shape")
+                    throw KeychainError.invalidArgument(
+                        "The replacement key's type, class, or size differs from the stored key; delete the stored key first"
+                    )
+                }
                 var error: Unmanaged<CFError>?
                 guard let data = SecKeyCopyExternalRepresentation(key, &error) else {
                     if let error { _ = error.takeRetainedValue() }
                     throw KeychainError.invalidArgument("Updating a cryptographic key requires exportable key material")
                 }
+                var storedProtection: CFString?
+                if attributes.accessControl != nil, attributes.accessibility == nil {
+                    storedProtection = try self.storedProtection(matching: sameShape)
+                }
                 var changes = try protectionAttributes(
-                    accessibility: attributes.accessibility, accessControl: attributes.accessControl)
+                    protection: attributes.accessibility?.secValue ?? storedProtection,
+                    accessControl: attributes.accessControl)
                 changes[kSecValueData as String] = data
-                try mapStatus(SecItemUpdate(cryptoSecQuery(from: query) as CFDictionary, changes as CFDictionary))
+                // The application label is the public-key hash of the stored material, so it
+                // must follow the new key.
+                if let label = replacementAttributes[kSecAttrApplicationLabel as String] {
+                    changes[kSecAttrApplicationLabel as String] = label
+                }
+                try mapStatus(SecItemUpdate(sameShape as CFDictionary, changes as CFDictionary))
+            }
+
+            /// The type, class, and size from a key's attributes, as query attributes that
+            /// select stored keys of the same shape.
+            package static func cryptoKeyShape(of attributes: [String: Any]) -> [String: Any] {
+                let names = [kSecAttrKeyType, kSecAttrKeyClass, kSecAttrKeySizeInBits].map { $0 as String }
+                return attributes.filter { names.contains($0.key) }
             }
 
             package func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
@@ -440,9 +565,7 @@
             }
 
             package func deleteCryptoKey(query: CryptoKeyQuery) throws {
-                let status = SecItemDelete(cryptoSecQuery(from: query) as CFDictionary)
-                if status == errSecItemNotFound { return }
-                try mapStatus(status)
+                try deleteEveryMatch(cryptoSecQuery(from: query))
             }
 
             package func deleteAllCryptoKeys(accessGroup: String?) throws {

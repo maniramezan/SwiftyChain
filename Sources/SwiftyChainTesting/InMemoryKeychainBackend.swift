@@ -163,62 +163,85 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
     }
 
     #if Cryptography && canImport(Security)
-        private struct CryptoIdentity: Hashable, Sendable {
+        private struct CryptoItem: Sendable {
             let tag: String
             let accessGroup: String?
-        }
-
-        private struct CryptoItem: Sendable {
             var key: StoredSecKey
             var accessibility: KeychainAccessibility?
             var accessControl: KeychainAccessControl?
+
+            /// Like the platform keychain, a query without an access group matches a key
+            /// in any group.
+            func matches(_ query: CryptoKeyQuery) -> Bool {
+                tag == query.tag && (query.accessGroup == nil || accessGroup == query.accessGroup)
+            }
         }
 
-        private let cryptoKeys = Mutex<[CryptoIdentity: CryptoItem]>([:])
+        private let cryptoKeys = Mutex<[CryptoItem]>([])
     #endif
 }
 
 #if Cryptography && canImport(Security)
     extension InMemoryKeychainBackend: KeychainCryptoBackend {
         public func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
-            let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
             try cryptoKeys.withLock { keys in
-                if keys[identity] != nil {
+                if keys.contains(where: { $0.matches(query) }) {
                     throw KeychainError.duplicateItem
                 }
-                keys[identity] = CryptoItem(
-                    key: StoredSecKey(key), accessibility: attributes.accessibility,
-                    accessControl: attributes.accessControl)
+                keys.append(
+                    CryptoItem(
+                        tag: query.tag, accessGroup: query.accessGroup, key: StoredSecKey(key),
+                        accessibility: attributes.accessibility, accessControl: attributes.accessControl))
             }
         }
 
+        /// Replaces every matching key, keeping the stored values `attributes` leaves `nil`.
+        ///
+        /// - Throws: `KeychainError.invalidArgument` when the replacement's type, class,
+        ///   or size differs from a stored key's, as the platform keychain does.
         public func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
-            let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
+            let replacementShape = Self.shape(of: key)
             try cryptoKeys.withLock { keys in
-                guard var item = keys[identity] else { throw KeychainError.itemNotFound }
-                item.key = StoredSecKey(key)
-                if let accessibility = attributes.accessibility { item.accessibility = accessibility }
-                if let accessControl = attributes.accessControl { item.accessControl = accessControl }
-                keys[identity] = item
+                let indices = keys.indices.filter { keys[$0].matches(query) }
+                guard !indices.isEmpty else { throw KeychainError.itemNotFound }
+                guard indices.allSatisfy({ Self.shape(of: keys[$0].key.rawValue) == replacementShape }) else {
+                    throw KeychainError.invalidArgument(
+                        "The replacement key's type, class, or size differs from the stored key; delete the stored key first"
+                    )
+                }
+                for index in indices {
+                    keys[index].key = StoredSecKey(key)
+                    if let accessibility = attributes.accessibility { keys[index].accessibility = accessibility }
+                    if let accessControl = attributes.accessControl { keys[index].accessControl = accessControl }
+                }
             }
         }
 
         public func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
-            let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
-            guard let stored = cryptoKeys.withLock({ $0[identity] }) else {
+            guard let stored = cryptoKeys.withLock({ keys in keys.first { $0.matches(query) } }) else {
                 throw KeychainError.itemNotFound
             }
             return stored.key.rawValue
         }
 
         public func deleteCryptoKey(query: CryptoKeyQuery) throws {
-            let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
-            cryptoKeys.withLock { _ = $0.removeValue(forKey: identity) }
+            cryptoKeys.withLock { keys in keys.removeAll { $0.matches(query) } }
         }
 
         public func deleteAllCryptoKeys(accessGroup: String?) throws {
             cryptoKeys.withLock { keys in
-                keys = keys.filter { identity, _ in accessGroup != nil && identity.accessGroup != accessGroup }
+                keys.removeAll { accessGroup == nil || $0.accessGroup == accessGroup }
+            }
+        }
+
+        private static func shape(of key: SecKey) -> [String?] {
+            let attributes = SecKeyCopyAttributes(key) as? [String: Any] ?? [:]
+            return [kSecAttrKeyType, kSecAttrKeyClass, kSecAttrKeySizeInBits].map { name in
+                switch attributes[name as String] {
+                case let number as NSNumber: number.stringValue
+                case let string as String: string
+                default: nil
+                }
             }
         }
     }
