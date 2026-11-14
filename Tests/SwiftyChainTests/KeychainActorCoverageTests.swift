@@ -151,23 +151,27 @@ func keychainActorInternetPasswordOperationsUseRealKeychainPaths() async throws 
     }
 }
 
-@Test
-func internetPasswordBulkDeleteDoesNotUseSynchronizableAttribute() async throws {
+@Test(
+    arguments: [
+        (KeychainDeleteQuery(service: "api.example.com", itemClass: .internetPassword), nil),
+        (KeychainDeleteQuery(service: "api.example.com", onlySynchronizable: true, itemClass: .internetPassword), true),
+        (
+            KeychainDeleteQuery(service: "api.example.com", includeSynchronizable: false, itemClass: .internetPassword),
+            false
+        ),
+    ] as [(KeychainDeleteQuery, Bool?)]
+)
+func internetPasswordBulkDeleteHonorsSynchronizableFilters(query: KeychainDeleteQuery, expected: Bool?) async throws {
     let backend = QueryRecordingBackend()
     let keychain = Keychain(backend: backend)
 
-    try await keychain.deleteAllItems(
-        matching: KeychainDeleteQuery(
-            service: "api.example.com",
-            onlySynchronizable: true,
-            itemClass: .internetPassword
-        )
-    )
+    try await keychain.deleteAllItems(matching: query)
 
-    let query = backend.lastDeleteQuery()
-    #expect(query?.itemClass == .internetPassword)
-    #expect(query?.server == "api.example.com")
-    #expect(query?.isSynchronizable == nil)
+    let recorded = backend.lastDeleteQuery()
+    #expect(recorded?.itemClass == .internetPassword)
+    #expect(recorded?.server == "api.example.com")
+    #expect(recorded?.service == nil)
+    #expect(recorded?.isSynchronizable == expected)
 }
 
 @Test

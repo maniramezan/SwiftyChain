@@ -43,5 +43,9 @@
 
         /// Removes the matching key. Succeeds when no key matches.
         func deleteCryptoKey(query: CryptoKeyQuery) throws
+
+        /// Removes every key in `accessGroup`, or every key the backend can reach when
+        /// `accessGroup` is `nil`. Succeeds when no key matches.
+        func deleteAllCryptoKeys(accessGroup: String?) throws
     }
 #endif

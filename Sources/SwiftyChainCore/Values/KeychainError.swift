@@ -30,6 +30,9 @@ public enum KeychainError: Error, Sendable, Equatable {
     case platformUnsupported(String)
     /// The platform keychain did not respond before the operation's timeout elapsed.
     case timedOut
+    /// The request combines options that contradict each other, such as a synchronizable
+    /// item with a `ThisDeviceOnly` accessibility. The message names the conflict.
+    case invalidArgument(String)
 }
 
 extension KeychainError {
@@ -77,6 +80,8 @@ extension KeychainError {
             "platformUnsupported"
         case .timedOut:
             "timedOut"
+        case .invalidArgument:
+            "invalidArgument"
         }
     }
 }

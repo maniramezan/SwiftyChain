@@ -4,6 +4,7 @@ import SwiftyChainTesting
 import Testing
 
 #if canImport(Security)
+    import Security
     import SwiftyChainAppleKeychain
 #elseif os(Linux)
     import SwiftyChainSecretService
@@ -340,6 +341,103 @@ struct BackendContractTests {
             }
         }
     }
+
+    @Test(arguments: BackendFixture.available)
+    func internetPasswordBulkDeletesHonorSynchronizableFilters(_ fixture: BackendFixture) async throws {
+        let keychain = Keychain(backend: fixture.make())
+        let key = InternetPasswordKey(server: "\(UUID().uuidString.lowercased()).example.com", account: "alice")
+
+        try await withCleanup(keychain, internetPasswords: [key]) {
+            try await keychain.saveInternetPassword("local", for: key)
+
+            if fixture.canWriteSynchronizableItems {
+                try await keychain.deleteAllItems(
+                    matching: KeychainDeleteQuery(
+                        service: key.server, onlySynchronizable: true, itemClass: .internetPassword)
+                )
+                #expect(try await keychain.loadInternetPassword(for: key) == "local")
+            }
+
+            try await keychain.deleteAllItems(
+                matching: KeychainDeleteQuery(
+                    service: key.server,
+                    includeSynchronizable: false,
+                    itemClass: .internetPassword
+                )
+            )
+            await #expect(throws: KeychainError.itemNotFound) {
+                try await keychain.loadInternetPassword(for: key)
+            }
+        }
+    }
+
+    @Test(arguments: BackendFixture.available)
+    func synchronizableItemsCantBeThisDeviceOnly(_ fixture: BackendFixture) async throws {
+        let backend = fixture.make()
+        let keychain = Keychain(backend: backend)
+        let key = KeychainKey<String>(
+            service: uniqueService(),
+            account: "token",
+            accessibility: .whenUnlockedThisDeviceOnly,
+            isSynchronizable: true
+        )
+
+        try await withCleanup(keychain, services: [key.service]) {
+            await #expect(throws: KeychainError.self) {
+                try await keychain.save("value", for: key)
+            }
+            if backend.capabilities.contains(.synchronizable) {
+                await #expect(
+                    throws: KeychainError.invalidArgument(
+                        "A synchronizable item can't use a ThisDeviceOnly accessibility")
+                ) {
+                    try await keychain.upsert("value", for: key)
+                }
+            }
+        }
+    }
+
+    #if Cryptography && canImport(Security)
+        @Test(arguments: BackendFixture.available)
+        func cryptoKeyBulkDeletesUseTheCryptoBackend(_ fixture: BackendFixture) async throws {
+            let backend = fixture.make()
+            let keychain = Keychain(backend: backend)
+            let serviceQuery = KeychainDeleteQuery(service: "com.example", itemClass: .cryptographicKey)
+
+            guard backend.capabilities.contains(.cryptoKeys) else {
+                await #expect(
+                    throws: KeychainError.platformUnsupported(
+                        "Cryptographic keys are not supported by this keychain backend")
+                ) {
+                    try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+                }
+                return
+            }
+            await #expect(
+                throws: KeychainError.invalidArgument(
+                    "Cryptographic keys have no service. Delete them by access group, or pass no service"
+                )
+            ) {
+                try await keychain.deleteAllItems(matching: serviceQuery)
+            }
+
+            // An unscoped delete would reach the developer's own keys in a real keychain.
+            guard fixture.isIsolated else { return }
+            let keyRef = CryptoKeyReference<StoredSecKey>(tag: "tests.contract.crypto.\(UUID().uuidString)")
+            let attributes: [String: Any] = [
+                kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+                kSecAttrKeySizeInBits as String: 256,
+            ]
+            let secKey = try #require(SecKeyCreateRandomKey(attributes as CFDictionary, nil))
+            try await keychain.saveCryptoKey(StoredSecKey(secKey), for: keyRef)
+
+            try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+
+            await #expect(throws: KeychainError.itemNotFound) {
+                _ = try await keychain.loadCryptoKey(keyRef: keyRef)
+            }
+        }
+    #endif
 
     @Test(arguments: BackendFixture.available)
     func internetPasswordsRoundTrip(_ fixture: BackendFixture) async throws {

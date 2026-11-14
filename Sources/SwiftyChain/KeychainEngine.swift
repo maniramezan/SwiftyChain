@@ -56,9 +56,10 @@ package struct KeychainEngine: Sendable {
     package func update<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
         logKeychainOperationStarted("update", service: key.service, account: key.account)
         do {
+            let attributes = try writeAttributes(value, for: key)
             try backend.update(
-                matching: validated(identityQuery(for: key), for: .update),
-                to: writeAttributes(value, for: key)
+                matching: validated(identityQuery(for: key), attributes: attributes, for: .update),
+                to: attributes
             )
             notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .updated)
             logKeychainOperationSucceeded("update", service: key.service, account: key.account)
@@ -108,21 +109,35 @@ package struct KeychainEngine: Sendable {
             }
         logBulkDeleteStarted(query: query)
         do {
-            // Internet passwords use kSecAttrServer, not kSecAttrService.
-            let keychainQuery =
-                query.itemClass == .internetPassword
-                ? KeychainQuery(
-                    itemClass: query.itemClass,
-                    accessGroup: query.accessGroup,
-                    server: query.service
+            switch query.itemClass.kind {
+            case .cryptographicKey:
+                try deleteAllCryptoKeys(matching: query)
+            case .genericPassword:
+                try backend.delete(
+                    matching: validated(
+                        KeychainQuery(
+                            itemClass: query.itemClass,
+                            service: query.service,
+                            accessGroup: query.accessGroup,
+                            isSynchronizable: isSynchronizable
+                        ),
+                        for: .delete
+                    )
                 )
-                : KeychainQuery(
-                    itemClass: query.itemClass,
-                    service: query.service,
-                    accessGroup: query.accessGroup,
-                    isSynchronizable: isSynchronizable
+            case .internetPassword:
+                // An internet password's equivalent of a service is its server.
+                try backend.delete(
+                    matching: validated(
+                        KeychainQuery(
+                            itemClass: query.itemClass,
+                            accessGroup: query.accessGroup,
+                            isSynchronizable: isSynchronizable,
+                            server: query.service
+                        ),
+                        for: .delete
+                    )
                 )
-            try backend.delete(matching: validated(keychainQuery, for: .delete))
+            }
             if let service = query.service {
                 notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
             }
@@ -240,11 +255,44 @@ package struct KeychainEngine: Sendable {
     // Shared by save and upsert. Logging is left to the caller so an upsert
     // that hits an existing item does not report a failed save.
     private func add<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        try backend.add(validated(identityQuery(for: key), for: .add), attributes: writeAttributes(value, for: key))
+        let attributes = try writeAttributes(value, for: key)
+        try backend.add(validated(identityQuery(for: key), attributes: attributes, for: .add), attributes: attributes)
         notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
     }
 
-    private func validated(_ query: KeychainQuery, for operation: KeychainOperation) throws -> KeychainQuery {
+    // Cryptographic keys live behind KeychainCryptoBackend and have no service, so a
+    // bulk delete of them selects keys by access group alone.
+    private func deleteAllCryptoKeys(matching query: KeychainDeleteQuery) throws {
+        _ = try validated(KeychainQuery(itemClass: query.itemClass, accessGroup: query.accessGroup), for: .delete)
+        if query.service != nil {
+            throw invalidArgument(
+                "Cryptographic keys have no service. Delete them by access group, or pass no service"
+            )
+        }
+        if query.onlySynchronizable {
+            throw invalidArgument("SwiftyChain stores cryptographic keys as local items, so none are synchronizable")
+        }
+        #if Cryptography && canImport(Security)
+            try cryptoBackend().deleteAllCryptoKeys(accessGroup: query.accessGroup)
+        #else
+            SwiftyChainLoggers.keychain.debug("Crypto key bulk delete requested without a crypto backend")
+            throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
+        #endif
+    }
+
+    package func invalidArgument(_ message: String) -> KeychainError {
+        SwiftyChainLoggers.keychain.debug("Rejected invalid argument: \(message, privacy: .public)")
+        return .invalidArgument(message)
+    }
+
+    private func validated(
+        _ query: KeychainQuery,
+        attributes: KeychainAttributes? = nil,
+        for operation: KeychainOperation
+    ) throws -> KeychainQuery {
+        if query.isSynchronizable == true, attributes?.accessibility?.isThisDeviceOnly == true {
+            throw invalidArgument("A synchronizable item can't use a ThisDeviceOnly accessibility")
+        }
         try KeychainQueryValidator.validate(query, for: operation, against: backend.capabilities)
         return query
     }

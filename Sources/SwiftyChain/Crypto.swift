@@ -77,15 +77,19 @@
     }
 
     extension Keychain {
-        /// Saves a cryptographic key to the keychain, replacing any existing key with the same reference.
+        /// Saves a new cryptographic key to the keychain.
         ///
-        /// If a key already exists for `keyRef` it is deleted and re-added, matching the
-        /// upsert behavior of ``Keychain/upsert(_:for:)`` for generic passwords.
+        /// Like ``Keychain/save(_:for:)``, this never replaces an existing item. To replace
+        /// a key, delete it with ``deleteCryptoKey(keyRef:)`` first. SwiftyChain has no
+        /// crypto-key upsert: the keychain can't swap a key's material in place, so
+        /// replacing one always means deleting it, and losing it if the new key can't be
+        /// stored.
         ///
         /// - Parameters:
         ///   - key: The ``StoredSecKey`` wrapping the `SecKey` to persist.
         ///   - keyRef: The ``CryptoKeyReference`` identifying the item.
-        /// - Throws: ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
+        /// - Throws: ``KeychainError/duplicateItem`` if a key already exists for `keyRef`,
+        ///   ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
         ///   or another ``KeychainError`` if the operation fails.
         ///
         /// ```swift
@@ -113,9 +117,10 @@
 
         /// Deletes a cryptographic key from the keychain.
         ///
+        /// This is a no-op when no key exists for the reference.
+        ///
         /// - Parameter keyRef: The ``CryptoKeyReference`` identifying the item to delete.
-        /// - Throws: ``KeychainError/itemNotFound`` if no key exists for the reference,
-        ///   ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
+        /// - Throws: ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
         ///   or another ``KeychainError`` on failure.
         ///
         /// ```swift
@@ -128,20 +133,20 @@
 
     extension KeychainEngine {
         package func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
-            let cryptoBackend = try cryptoStorageBackend()
-            let query = cryptoKeyQuery(for: keyRef)
-            let attributes = CryptoKeyAttributes(accessibility: keyRef.accessibility)
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey started for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
             )
             do {
-                try cryptoBackend.addCryptoKey(key.rawValue, query: query, attributes: attributes)
-            } catch KeychainError.duplicateItem {
-                SwiftyChainLoggers.keychain.debug(
-                    "saveCryptoKey replacing existing key for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
+                try cryptoBackend().addCryptoKey(
+                    key.rawValue,
+                    query: cryptoKeyQuery(for: keyRef),
+                    attributes: CryptoKeyAttributes(accessibility: keyRef.accessibility)
                 )
-                try cryptoBackend.deleteCryptoKey(query: query)
-                try cryptoBackend.addCryptoKey(key.rawValue, query: query, attributes: attributes)
+            } catch {
+                SwiftyChainLoggers.keychain.debug(
+                    "saveCryptoKey failed for tag=\(keyRef.tag, privacy: .private(mask: .hash)) error=\((error as? KeychainError)?.logName ?? "unknown", privacy: .public)"
+                )
+                throw error
             }
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey succeeded for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
@@ -149,14 +154,14 @@
         }
 
         package func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey {
-            StoredSecKey(try cryptoStorageBackend().loadCryptoKey(query: cryptoKeyQuery(for: keyRef)))
+            StoredSecKey(try cryptoBackend().loadCryptoKey(query: cryptoKeyQuery(for: keyRef)))
         }
 
         package func deleteCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws {
-            try cryptoStorageBackend().deleteCryptoKey(query: cryptoKeyQuery(for: keyRef))
+            try cryptoBackend().deleteCryptoKey(query: cryptoKeyQuery(for: keyRef))
         }
 
-        private func cryptoStorageBackend() throws -> any KeychainCryptoBackend {
+        package func cryptoBackend() throws -> any KeychainCryptoBackend {
             guard backend.capabilities.contains(.cryptoKeys), let cryptoBackend = backend as? any KeychainCryptoBackend
             else {
                 SwiftyChainLoggers.keychain.debug("Crypto key operation requested on a backend without cryptoKeys")

@@ -60,6 +60,8 @@ func keychainErrorLogNamesCoverAllCases() {
         (.operationFailed(-1), "operationFailed"),
         (.accessGroupDenied, "accessGroupDenied"),
         (.platformUnsupported("nope"), "platformUnsupported"),
+        (.timedOut, "timedOut"),
+        (.invalidArgument("nope"), "invalidArgument"),
     ]
 
     for (error, expectedLogName) in cases {
@@ -78,6 +80,7 @@ func keychainErrorLogNamesCoverAllCases() {
         .accessGroupDenied,
         .platformUnsupported("none"),
         .timedOut,
+        .invalidArgument("conflict"),
     ]
 )
 func callerHandledErrorsAreExpectedOutcomes(_ error: KeychainError) {

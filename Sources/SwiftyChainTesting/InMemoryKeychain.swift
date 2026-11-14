@@ -155,9 +155,9 @@ public actor InMemoryKeychain: KeychainProtocol {
     #endif
 
     #if Cryptography && canImport(Security)
-        /// Saves a cryptographic key.
+        /// Saves a new cryptographic key.
         ///
-        /// Replaces any previously saved key for the same `keyRef`.
+        /// - Throws: `KeychainError.duplicateItem` if a key matching `keyRef` was saved.
         public func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
             try engine.saveCryptoKey(key, for: keyRef)
         }
