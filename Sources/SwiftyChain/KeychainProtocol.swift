@@ -140,7 +140,9 @@ extension KeychainProtocol {
     /// It is kept separate from ``KeychainProtocol`` so that enabling the trait anywhere
     /// in a dependency graph never adds requirements to your own `KeychainProtocol` types.
     public protocol KeychainCryptoStoring: KeychainProtocol {
-        /// Saves a cryptographic key to the keychain, replacing any key stored under the same reference.
+        /// Saves a new cryptographic key to the keychain.
+        ///
+        /// - Throws: ``KeychainError/duplicateItem`` if a key matching `keyRef` exists.
         func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws
 
         /// Loads a cryptographic key from the keychain.

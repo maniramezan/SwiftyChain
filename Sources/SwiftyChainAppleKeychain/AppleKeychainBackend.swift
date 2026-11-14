@@ -97,10 +97,14 @@
 
         package func delete(matching query: KeychainQuery) throws {
             logSecurityCall("SecItemDelete", query: query)
-            // The macOS legacy keychain removes one matching item per
-            // SecItemDelete call, even when more match. Loop until the keychain
-            // reports no more matches so bulk deletes actually clear everything.
-            let attributes = matchQuery(from: query) as CFDictionary
+            try deleteEveryMatch(matchQuery(from: query))
+        }
+
+        // The macOS legacy keychain removes one matching item per SecItemDelete
+        // call, even when more match. Loop until the keychain reports no more
+        // matches so bulk deletes actually clear everything.
+        fileprivate func deleteEveryMatch(_ attributes: [String: Any]) throws {
+            let attributes = attributes as CFDictionary
             for _ in 0..<deleteSafetyCap {
                 let status = SecItemDelete(attributes)
                 if status == errSecItemNotFound {
@@ -109,9 +113,7 @@
                 }
                 try mapStatus(status)
             }
-            SwiftyChainLoggers.backend.fault(
-                "SecItemDelete exceeded safety cap for itemClass=\(String(describing: query.itemClass), privacy: .public) service=\(query.service ?? "<none>", privacy: .private(mask: .hash)) account=\(query.account ?? "<none>", privacy: .private(mask: .hash)) server=\(query.server ?? "<none>", privacy: .private(mask: .hash))"
-            )
+            SwiftyChainLoggers.backend.fault("SecItemDelete exceeded its safety cap")
             throw KeychainError.operationFailed(errSecInternalError)
         }
 
@@ -355,6 +357,23 @@
                 let status = SecItemDelete(cryptoSecQuery(from: query) as CFDictionary)
                 if status == errSecItemNotFound { return }
                 try mapStatus(status)
+            }
+
+            package func deleteAllCryptoKeys(accessGroup: String?) throws {
+                SwiftyChainLoggers.backend.debug(
+                    "SecItemDelete started for itemClass=cryptographicKey accessGroup=\(accessGroup ?? "<none>", privacy: .private(mask: .hash))"
+                )
+                try deleteEveryMatch(cryptoBulkDeleteQuery(accessGroup: accessGroup))
+            }
+
+            /// The dictionary a bulk delete of keys matches: the key class and, when given,
+            /// the access group. Keys have no service attribute.
+            package func cryptoBulkDeleteQuery(accessGroup: String?) -> [String: Any] {
+                var attributes: [String: Any] = [kSecClass as String: kSecClassKey]
+                if let accessGroup {
+                    attributes[kSecAttrAccessGroup as String] = accessGroup
+                }
+                return attributes
             }
 
             private func cryptoSecQuery(from query: CryptoKeyQuery) -> [String: Any] {

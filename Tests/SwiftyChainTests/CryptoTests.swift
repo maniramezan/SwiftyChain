@@ -39,6 +39,13 @@
             deletedQueries.append(query)
             storedKeys.removeValue(forKey: query.tag)
         }
+
+        private(set) var bulkDeletedAccessGroups: [String?] = []
+
+        func deleteAllCryptoKeys(accessGroup: String?) throws {
+            bulkDeletedAccessGroups.append(accessGroup)
+            storedKeys.removeAll()
+        }
     }
 
     @Test
@@ -58,17 +65,56 @@
     }
 
     @Test
-    func cryptoSaveOverwritesExistingTag() async throws {
+    func cryptoSaveRejectsAnExistingTag() async throws {
         let keychain = InMemoryKeychain()
         let first = try makeECKey()
         let second = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.overwrite")
 
         try await keychain.saveCryptoKey(StoredSecKey(first), for: ref)
-        try await keychain.saveCryptoKey(StoredSecKey(second), for: ref)
+        await #expect(throws: KeychainError.duplicateItem) {
+            try await keychain.saveCryptoKey(StoredSecKey(second), for: ref)
+        }
 
         let loaded = try await keychain.loadCryptoKey(keyRef: ref)
-        #expect(CFEqual(loaded.rawValue, second))
+        #expect(CFEqual(loaded.rawValue, first))
+    }
+
+    @Test
+    func cryptoBulkDeleteRoutesToTheCryptoBackend() async throws {
+        let backend = MockCryptoBackend()
+        let keychain = Keychain(backend: backend)
+        try await keychain.saveCryptoKey(
+            StoredSecKey(try makeECKey()),
+            for: CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.bulk")
+        )
+
+        try await keychain.deleteAllItems(
+            matching: KeychainDeleteQuery(accessGroup: "group.a", itemClass: .cryptographicKey))
+        try await keychain.deleteAllItems(matching: KeychainDeleteQuery(itemClass: .cryptographicKey))
+
+        #expect(backend.bulkDeletedAccessGroups == ["group.a", nil])
+        await #expect(throws: KeychainError.itemNotFound) {
+            _ = try await keychain.loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.bulk"))
+        }
+    }
+
+    @Test
+    func cryptoBulkDeleteRejectsAService() async throws {
+        let backend = MockCryptoBackend()
+        let keychain = Keychain(backend: backend)
+
+        await #expect(throws: KeychainError.self) {
+            try await keychain.deleteAllItems(
+                matching: KeychainDeleteQuery(service: "com.example", itemClass: .cryptographicKey)
+            )
+        }
+        await #expect(throws: KeychainError.self) {
+            try await keychain.deleteAllItems(
+                matching: KeychainDeleteQuery(onlySynchronizable: true, itemClass: .cryptographicKey)
+            )
+        }
+        #expect(backend.bulkDeletedAccessGroups.isEmpty)
     }
 
     @Test
@@ -121,19 +167,19 @@
     }
 
     @Test
-    func cryptoActorOverwritesDuplicateKeyViaDeleteAndReadd() async throws {
+    func cryptoSaveNeverDeletesAnExistingKey() async throws {
         let backend = MockCryptoBackend()
         let keychain = Keychain(backend: backend)
         let first = try makeECKey()
-        let second = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.injected.overwrite")
 
         try await keychain.saveCryptoKey(StoredSecKey(first), for: ref)
-        try await keychain.saveCryptoKey(StoredSecKey(second), for: ref)
+        await #expect(throws: KeychainError.duplicateItem) {
+            try await keychain.saveCryptoKey(StoredSecKey(try makeECKey()), for: ref)
+        }
 
-        let loaded = try await keychain.loadCryptoKey(keyRef: ref)
-        #expect(CFEqual(loaded.rawValue, second))
-        #expect(backend.deletedQueries.map(\.tag) == [ref.tag])
+        #expect(CFEqual(try await keychain.loadCryptoKey(keyRef: ref).rawValue, first))
+        #expect(backend.deletedQueries.isEmpty)
     }
 
     @Test

@@ -191,5 +191,11 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
             let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
             cryptoKeys.withLock { _ = $0.removeValue(forKey: identity) }
         }
+
+        public func deleteAllCryptoKeys(accessGroup: String?) throws {
+            cryptoKeys.withLock { keys in
+                keys = keys.filter { identity, _ in accessGroup != nil && identity.accessGroup != accessGroup }
+            }
+        }
     }
 #endif
