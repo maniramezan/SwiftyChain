@@ -22,6 +22,7 @@ typedef enum {
     SWIFTYCHAIN_SECRET_LOADED = 0,
     SWIFTYCHAIN_SECRET_LIBRARY_MISSING = 1,
     SWIFTYCHAIN_SECRET_SYMBOL_MISSING = 2,
+    SWIFTYCHAIN_SECRET_DYNAMIC_LOADING_UNAVAILABLE = 3,
 } swiftychain_secret_load_status;
 
 typedef enum {
@@ -41,6 +42,13 @@ int swiftychain_secret_session_bus_available(
     swiftychain_secret_cancellable *cancellable,
     swiftychain_secret_error **error
 );
+
+/*
+ * Drops libsecret's cached Secret Service proxy and session, so the next call
+ * reconnects. Used after a failure that may mean the keyring daemon or the bus
+ * restarted.
+ */
+void swiftychain_secret_service_reset(void);
 
 swiftychain_secret_attributes *swiftychain_secret_attributes_new(void);
 void swiftychain_secret_attributes_insert(swiftychain_secret_attributes *attributes, const char *key, const char *value);
@@ -95,6 +103,28 @@ swiftychain_secret_value *swiftychain_secret_item_secret(
     swiftychain_secret_error **error
 );
 void swiftychain_secret_string_free(char *string);
+
+/*
+ * Whether a search result is a D-Bus Secret Service item, which can be changed in
+ * place in whichever collection holds it. libsecret's file backend, used inside
+ * some sandboxes, returns other objects; it has a single collection, so storing
+ * with the item's attributes replaces the item there.
+ */
+int swiftychain_secret_item_is_service_item(swiftychain_secret_item *item);
+/* Each returns 1 on success, or 0 and sets error. */
+int swiftychain_secret_item_set_secret(
+    swiftychain_secret_item *item,
+    const void *bytes,
+    size_t length,
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+);
+int swiftychain_secret_item_set_label(
+    swiftychain_secret_item *item,
+    const char *label,
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+);
 
 const void *swiftychain_secret_value_bytes(swiftychain_secret_value *value, size_t *length);
 void swiftychain_secret_value_free(swiftychain_secret_value *value);

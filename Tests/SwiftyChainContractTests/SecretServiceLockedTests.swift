@@ -28,6 +28,21 @@
             #expect(try await keychain.load(key: fixture.key) == "secret")
         }
 
+        @Test
+        func updateLeavesALockedCredentialUnchanged() async throws {
+            let fixture = LockedSecretServiceFixture()
+            defer { fixture.cleanUp() }
+            try fixture.storeAndLock()
+            let keychain = Keychain(backend: fixture.backend)
+
+            await #expect(throws: KeychainError.userPresenceRequired) {
+                try await keychain.update("changed", for: fixture.key)
+            }
+
+            try fixture.unlock()
+            #expect(try await keychain.load(key: fixture.key) == "secret")
+        }
+
         @Test(arguments: [false, true])
         func deletionFailsWhenLockedCredentialsRemain(bulk: Bool) async throws {
             let fixture = LockedSecretServiceFixture()

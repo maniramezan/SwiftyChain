@@ -26,6 +26,10 @@ so building needs no extra packages. To store secrets, the machine running your 
 - A D-Bus session bus.
 - A running Secret Service provider, such as GNOME Keyring or KWallet.
 
+The binary must also be dynamically linked: one built with the Static Linux SDK (musl)
+can't load libsecret, and every call throws ``KeychainError/platformUnsupported(_:)``
+saying so.
+
 Desktop sessions normally provide all three. Headless servers, containers, and SSH sessions
 usually don't; use your platform's secret manager there instead.
 
@@ -43,7 +47,7 @@ in plaintext or in memory.
 | ``KeychainKey/comment`` | Not stored. |
 | ``KeychainKey/label`` | Shown as the item name in keyring managers such as Seahorse. Defaults to `service (account)`. |
 | Strings containing a NUL character | Throws ``KeychainError/platformUnsupported(_:)``. libsecret reads attributes as C strings, so it would otherwise see only the text before the NUL. |
-| ``Keychain/deleteAllItems(matching:)`` without a service or access group | Throws ``KeychainError/platformUnsupported(_:)``; see <doc:#Isolation-between-applications>. |
+| ``Keychain/deleteAllItems(matching:)`` without a service, server, or access group, or without an exact item | Throws ``KeychainError/platformUnsupported(_:)``; see <doc:#Isolation-between-applications>. |
 | `cryptography` trait | Unavailable; it stores Apple `SecKey` values. |
 
 Values are stored as binary data with no size limit, so every ``KeychainStorable`` type
@@ -66,10 +70,15 @@ read item attributes, which stay readable while the keyring is locked, so they n
 
 Each request to the keyring gives up after 30 seconds and throws ``KeychainError/timedOut``,
 so an unanswered prompt or an unresponsive keyring daemon can't block your app forever.
-Most operations make one request. ``Keychain/upsert(_:for:)`` makes two when the item
-already exists (a save that finds the duplicate, then an update), so it can wait up to 60
-seconds. Time spent waiting for another SwiftyChain call in the same process to finish
-isn't counted.
+The 30 seconds include time spent waiting for another SwiftyChain call in the same process
+to finish, so calls queued behind an unanswered prompt all time out together rather than
+one after another. A slow or hung D-Bus session bus also throws ``KeychainError/timedOut``,
+not ``KeychainError/platformUnsupported(_:)``, because it may recover. Most operations
+make one request. ``Keychain/upsert(_:for:)`` makes two when the item already exists (a
+save that finds the duplicate, then an update), so it can wait up to 60 seconds.
+
+If the keyring daemon or the session bus restarts while your app runs, SwiftyChain
+reconnects on the next call, so a long-running process doesn't need restarting.
 
 When an unlock attempt leaves an existing item locked, reads and deletions throw
 ``KeychainError/userPresenceRequired``. libsecret reports a dismissed prompt and a prompt
@@ -84,7 +93,13 @@ on the main thread.
 
 Providers that have no default collection, such as KeePassXC before a database exposes
 one, can't store new items. Saves then throw ``KeychainError/platformUnsupported(_:)``
-saying so.
+saying so. New items always go to the default collection; updates change an item in
+whichever collection holds it.
+
+An update that matches several items changes them one at a time. The Secret Service has
+no transactions, so if one write fails, SwiftyChain tries to put back the items it already
+changed before throwing. It can't when the failure is a timeout, because the keyring isn't
+responding.
 
 ### Isolation between applications
 
@@ -103,10 +118,12 @@ SwiftyChain stores items under its own schemas (`dev.manman.SwiftyChain.GenericP
 `dev.manman.SwiftyChain.InternetPassword`), so its queries never touch items that other
 programs store. Every app built on SwiftyChain shares those schemas, though, and the Secret
 Service has no app sandbox to tell their items apart. Use a service name unique to your app,
-such as its reverse-DNS identifier. For the same reason, a bulk delete must name a service,
-server, or access group; ``Keychain/deleteAllItems(matching:)`` with an empty
-``KeychainDeleteQuery`` throws ``KeychainError/platformUnsupported(_:)`` instead of
-removing every SwiftyChain app's items.
+such as its reverse-DNS identifier. For the same reason, a delete must name a non-empty service
+(or server, for internet passwords) or access group, or one exact item: a service or
+server, even an empty one, together with an account. Otherwise
+``Keychain/deleteAllItems(matching:)`` throws ``KeychainError/platformUnsupported(_:)``
+instead of removing every SwiftyChain app's items. Deleting an item that is already gone,
+even one another process removed mid-call, succeeds.
 
 ### Logging
 

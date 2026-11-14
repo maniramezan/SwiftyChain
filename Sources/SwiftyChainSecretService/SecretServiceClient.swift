@@ -17,13 +17,18 @@
     /// Calls are serialized process-wide, across every client instance, because
     /// libsecret's synchronous API runs a nested main loop on the calling thread and
     /// because SwiftyChain's check-then-write operations, such as ``add(_:label:data:)``,
-    /// must not interleave with another call. Each call gets its own `GCancellable`,
-    /// which a timer cancels once the configured timeout elapses, so a hung keyring
-    /// daemon or an unanswered unlock prompt can't block the caller forever.
+    /// must not interleave with another call.
+    ///
+    /// The timeout bounds a whole call, including the time spent waiting for an earlier
+    /// call to finish: a call that can't start before its deadline throws
+    /// ``KeychainError/timedOut`` without reaching libsecret, so callers queued behind
+    /// an unanswered unlock prompt all fail within one timeout instead of one after
+    /// another. Each call gets its own `GCancellable`, which a timer cancels at the
+    /// deadline, so a hung keyring daemon can't block the caller forever.
     package final class SecretServiceClient: Sendable {
         /// Shared by every client, so `Keychain.shared`, other `Keychain` instances, and
         /// `KeychainStorage` wrappers in one process never interleave their calls.
-        private static let callLock = Mutex(())
+        private static let callGate = DispatchSemaphore(value: 1)
 
         private let timeout: Duration
 
@@ -53,43 +58,72 @@
             }
         }
 
-        /// Rewrites every item matching the query, keeping each item's own attributes.
+        /// Changes the label or secret of every item matching the query, in whichever
+        /// collection holds it, keeping each item's own attributes.
         ///
-        /// When `data` is `nil`, each item keeps its current secret, which means the
-        /// keyring may need to be unlocked to read it. The search and the writes run under
-        /// one lock and one deadline.
+        /// A `nil` label or secret leaves that part of each item unchanged. Every match is
+        /// read, which unlocks the keyring if needed, before anything is written. The
+        /// Secret Service has no transactions, so when a write fails part-way through,
+        /// the items already changed are restored, as far as the keyring still responds,
+        /// to their previous label and secret before the error is thrown. The search and the writes run under one lock and
+        /// one deadline.
         ///
-        /// - Throws: ``KeychainError/itemNotFound`` when nothing matches.
+        /// - Throws: ``KeychainError/itemNotFound`` when nothing matches, and
+        ///   ``KeychainError/userPresenceRequired`` when a match stays locked.
         package func replace(_ matching: SecretServiceItemQuery, label: String?, data: Data?) throws {
             try Self.validate(matching, label: label)
             try perform("replace", schema: matching.schema) { cancellable, _ in
                 try withAttributes(matching.attributes) { attributes in
-                    let needsSecrets = data == nil
-                    let items = try searchItems(
+                    try withSearchResults(
                         matching,
                         attributes: attributes,
-                        unlock: needsSecrets,
-                        loadSecrets: needsSecrets,
+                        unlock: true,
+                        loadSecrets: true,
                         cancellable: cancellable
-                    )
-                    guard !items.isEmpty else {
-                        throw KeychainError.itemNotFound
-                    }
-                    for item in items {
-                        guard let secret = data ?? item.secret else {
-                            SwiftyChainLoggers.backend.error("Secret Service update could not read the existing secret")
-                            throw KeychainError.unexpectedData
+                    ) { handles in
+                        guard !handles.isEmpty else {
+                            throw KeychainError.itemNotFound
                         }
-                        // Storing with the item's exact attribute set replaces that item in place.
-                        let itemQuery = SecretServiceItemQuery(schema: matching.schema, attributes: item.attributes)
-                        try withAttributes(itemQuery.attributes) { itemAttributes in
-                            try storeItem(
-                                matching.schema,
-                                attributes: itemAttributes,
-                                label: label ?? item.label,
-                                data: secret,
-                                cancellable: cancellable
-                            )
+                        var originals: [StoredItem] = []
+                        for handle in handles {
+                            guard
+                                let item = try readItem(
+                                    handle,
+                                    schema: matching.schema,
+                                    loadSecret: true,
+                                    cancellable: cancellable
+                                )
+                            else {
+                                continue
+                            }
+                            guard let secret = item.secret else {
+                                SwiftyChainLoggers.backend.debug(
+                                    "Secret Service update found a match that stays locked")
+                                throw KeychainError.userPresenceRequired
+                            }
+                            originals.append(StoredItem(handle: handle, item: item, secret: secret))
+                        }
+                        guard !originals.isEmpty else {
+                            throw KeychainError.itemNotFound
+                        }
+
+                        // An item is recorded before its write, because a write that changes
+                        // both the secret and the label can fail after changing only one.
+                        var written: [StoredItem] = []
+                        do {
+                            for original in originals {
+                                written.append(original)
+                                try rewrite(
+                                    original,
+                                    schema: matching.schema,
+                                    label: label,
+                                    data: data,
+                                    cancellable: cancellable
+                                )
+                            }
+                        } catch {
+                            restore(written, schema: matching.schema, cancellable: cancellable)
+                            throw error
                         }
                     }
                 }
@@ -134,24 +168,44 @@
         }
 
         /// Removes every matching item. Returns whether anything was removed.
+        ///
+        /// Another process may delete a match between libsecret's search and its delete,
+        /// which libsecret reports as "no such object". That item is gone either way, so
+        /// the clear is retried for the remaining matches rather than reported as
+        /// ``KeychainError/itemNotFound``.
         @discardableResult
         package func clear(_ query: SecretServiceItemQuery) throws -> Bool {
             try Self.validate(query, label: nil)
-            return try perform("clear", schema: query.schema) { cancellable, error in
+            return try perform("clear", schema: query.schema) { cancellable, _ in
                 try withAttributes(query.attributes) { attributes in
-                    guard try hasMatchingItems(query, attributes: attributes, unlock: true, cancellable: cancellable)
-                    else {
-                        return false
+                    var removed = false
+                    for _ in 0..<Self.clearAttempts {
+                        guard
+                            try hasMatchingItems(query, attributes: attributes, unlock: true, cancellable: cancellable)
+                        else {
+                            return removed
+                        }
+                        var error: OpaquePointer?
+                        let cleared = swiftychain_secret_clear(query.schema.kind, attributes, cancellable, &error)
+                        do {
+                            try throwIfFailed(error)
+                            removed = removed || cleared != 0
+                            break
+                        } catch let failure as SecretServiceFailure where SecretServiceErrors.isNoSuchObject(failure) {
+                            SwiftyChainLoggers.backend.debug("libsecret clear raced a concurrent delete; retrying")
+                            removed = true
+                        }
                     }
-                    let removed = swiftychain_secret_clear(query.schema.kind, attributes, cancellable, &error)
-                    try throwIfFailed(error)
                     if try hasMatchingItems(query, attributes: attributes, unlock: false, cancellable: cancellable) {
                         throw KeychainError.userPresenceRequired
                     }
-                    return removed != 0
+                    return removed
                 }
             }
         }
+
+        /// How many times ``clear(_:)`` retries after a match disappears mid-delete.
+        private static let clearAttempts = 3
 
         /// Rejects strings libsecret would silently truncate. Swift passes strings to C
         /// as `const char *`, so libsecret sees only the text before the first NUL, and
@@ -209,6 +263,29 @@
             loadSecrets: Bool,
             cancellable: OpaquePointer?
         ) throws -> [SecretServiceItem] {
+            try withSearchResults(
+                query,
+                attributes: attributes,
+                unlock: unlock,
+                loadSecrets: loadSecrets,
+                cancellable: cancellable
+            ) { handles in
+                try handles.compactMap { handle in
+                    try readItem(handle, schema: query.schema, loadSecret: loadSecrets, cancellable: cancellable)
+                }
+            }
+        }
+
+        /// Runs `body` with the matching items' libsecret handles, which stay valid until
+        /// it returns.
+        private func withSearchResults<Result>(
+            _ query: SecretServiceItemQuery,
+            attributes: OpaquePointer,
+            unlock: Bool,
+            loadSecrets: Bool,
+            cancellable: OpaquePointer?,
+            _ body: ([OpaquePointer]) throws -> Result
+        ) throws -> Result {
             var error: OpaquePointer?
             let list = swiftychain_secret_search(
                 query.schema.kind,
@@ -219,25 +296,91 @@
                 &error
             )
             try throwIfFailed(error)
-            guard let list else { return [] }
-            defer { swiftychain_secret_list_free(list) }
+            defer {
+                if let list {
+                    swiftychain_secret_list_free(list)
+                }
+            }
 
-            var items: [SecretServiceItem] = []
-            var node: OpaquePointer? = list
+            var handles: [OpaquePointer] = []
+            var node = list
             while let current = node {
                 if let item = swiftychain_secret_list_item(current) {
-                    items.append(
-                        try readItem(
-                            item,
-                            schema: query.schema,
-                            loadSecret: loadSecrets,
-                            cancellable: cancellable
-                        )
-                    )
+                    handles.append(item)
                 }
                 node = swiftychain_secret_list_next(current)
             }
-            return items
+            return try body(handles)
+        }
+
+        /// Writes a new label or secret to one item found by ``replace(_:label:data:)``.
+        private func rewrite(
+            _ stored: StoredItem,
+            schema: SecretServiceSchema,
+            label: String?,
+            data: Data?,
+            cancellable: OpaquePointer?
+        ) throws {
+            guard swiftychain_secret_item_is_service_item(stored.handle) != 0 else {
+                // libsecret's file backend has one collection, so storing with the item's
+                // exact attribute set replaces it there.
+                try withAttributes(stored.item.attributes) { attributes in
+                    try storeItem(
+                        schema,
+                        attributes: attributes,
+                        label: label ?? stored.item.label,
+                        data: data ?? stored.secret,
+                        cancellable: cancellable
+                    )
+                }
+                return
+            }
+            if let data {
+                var error: OpaquePointer?
+                let written = data.withUnsafeBytes { buffer in
+                    swiftychain_secret_item_set_secret(
+                        stored.handle,
+                        buffer.baseAddress,
+                        buffer.count,
+                        cancellable,
+                        &error
+                    )
+                }
+                try throwIfFailed(error)
+                if written == 0 {
+                    SwiftyChainLoggers.backend.error("libsecret set_secret reported failure without an error")
+                    throw KeychainError.operationFailed(0)
+                }
+            }
+            if let label, label != stored.item.label {
+                var error: OpaquePointer?
+                let written = swiftychain_secret_item_set_label(stored.handle, label, cancellable, &error)
+                try throwIfFailed(error)
+                if written == 0 {
+                    SwiftyChainLoggers.backend.error("libsecret set_label reported failure without an error")
+                    throw KeychainError.operationFailed(0)
+                }
+            }
+        }
+
+        /// Puts back the label and secret of items changed by a ``replace(_:label:data:)``
+        /// that failed part-way through. Best effort: a failure is logged, and the
+        /// original error is what the caller sees.
+        private func restore(_ items: [StoredItem], schema: SecretServiceSchema, cancellable: OpaquePointer?) {
+            guard !items.isEmpty else { return }
+            SwiftyChainLoggers.backend.info(
+                "Restoring \(items.count, privacy: .public) Secret Service items after a failed update"
+            )
+            for stored in items.reversed() {
+                do {
+                    try rewrite(
+                        stored, schema: schema, label: stored.item.label, data: stored.secret, cancellable: cancellable)
+                } catch {
+                    SwiftyChainLoggers.backend.error(
+                        "Could not restore a Secret Service item after a failed update for schema=\(schema.name, privacy: .public)"
+                    )
+                }
+            }
         }
 
         private func hasMatchingItems(
@@ -262,39 +405,78 @@
             schema: SecretServiceSchema,
             _ body: (OpaquePointer?, inout OpaquePointer?) throws -> Result
         ) throws -> Result {
-            try Self.callLock.withLock { _ in
-                // The library must load before anything below it, because every GLib and
-                // libsecret call dereferences symbols resolved by dlopen. Then the timer
-                // is created, so every GLib call after it — including the D-Bus
-                // session-handshake in `ensureSessionBus` — respects the timeout.
-                try ensureLibraryLoaded()
-                let timer = TimeoutTimer(after: timeout)
-                defer { timer.disarm() }
-                try ensureSessionBus(cancellable: timer.cancellable)
+            // The deadline is fixed before waiting for the gate, so the timeout covers the
+            // wait as well as the call.
+            let deadline = SecretServiceDeadline.dispatchTime(after: timeout)
+            guard Self.callGate.wait(timeout: deadline) == .success else {
+                SwiftyChainLoggers.backend.debug(
+                    "libsecret \(operation, privacy: .public) timed out waiting for an earlier call for schema=\(schema.name, privacy: .public)"
+                )
+                throw KeychainError.timedOut
+            }
+            defer { Self.callGate.signal() }
+
+            // The library must load before anything below it, because every GLib and
+            // libsecret call dereferences symbols resolved by dlopen. Then the timer is
+            // created, so every GLib call after it — including the D-Bus session handshake
+            // in `ensureSessionBus` — respects the deadline.
+            try ensureLibraryLoaded()
+            let timer = TimeoutTimer(deadline: deadline)
+            defer { timer.disarm() }
+            do {
+                try ensureSessionBus(timer: timer)
                 SwiftyChainLoggers.backend.debug(
                     "libsecret \(operation, privacy: .public) started for schema=\(schema.name, privacy: .public)"
                 )
                 var error: OpaquePointer?
+                let result: Result
                 do {
-                    let result = try body(timer.cancellable, &error)
-                    SwiftyChainLoggers.backend.debug(
-                        "libsecret \(operation, privacy: .public) succeeded for schema=\(schema.name, privacy: .public)"
+                    result = try body(timer.cancellable, &error)
+                } catch let failure as SecretServiceFailure
+                    where SecretServiceErrors.isStaleConnection(failure) && !timer.fired
+                {
+                    // A restarted keyring daemon leaves libsecret's cached proxy pointing
+                    // at the old process, so the request was never delivered. Reconnect
+                    // and try once more; a provider that is really gone fails again.
+                    SwiftyChainLoggers.backend.info(
+                        "libsecret \(operation, privacy: .public) found a stale connection code=\(failure.code, privacy: .public); reconnecting"
                     )
-                    return result
-                } catch let failure as SecretServiceFailure {
-                    let keychainError = SecretServiceErrors.keychainError(for: failure, timerFired: timer.fired)
-                    if keychainError.isExpectedOutcome {
-                        SwiftyChainLoggers.backend.debug(
-                            "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
-                        )
-                    } else {
-                        SwiftyChainLoggers.backend.error(
-                            "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
-                        )
-                    }
-                    throw keychainError
+                    swiftychain_secret_service_reset()
+                    error = nil
+                    result = try body(timer.cancellable, &error)
                 }
+                SwiftyChainLoggers.backend.debug(
+                    "libsecret \(operation, privacy: .public) succeeded for schema=\(schema.name, privacy: .public)"
+                )
+                return result
+            } catch let failure as SecretServiceFailure {
+                let keychainError = SecretServiceErrors.keychainError(for: failure, timerFired: timer.fired)
+                if keychainError.isExpectedOutcome {
+                    SwiftyChainLoggers.backend.debug(
+                        "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
+                    )
+                } else {
+                    SwiftyChainLoggers.backend.error(
+                        "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
+                    )
+                }
+                resetConnectionIfNeeded(after: keychainError)
+                throw keychainError
+            } catch let keychainError as KeychainError {
+                resetConnectionIfNeeded(after: keychainError)
+                throw keychainError
             }
+        }
+
+        /// Drops libsecret's cached connection after a failure that may mean the keyring
+        /// daemon or the bus restarted, so a long-running process recovers on its next
+        /// call instead of failing until it restarts.
+        private func resetConnectionIfNeeded(after error: KeychainError) {
+            guard SecretServiceErrors.shouldResetConnection(after: error) else { return }
+            SwiftyChainLoggers.backend.debug(
+                "Resetting the Secret Service connection after error=\(error.logName, privacy: .public)"
+            )
+            swiftychain_secret_service_reset()
         }
 
         private func ensureLibraryLoaded() throws {
@@ -304,21 +486,29 @@
             case SWIFTYCHAIN_SECRET_SYMBOL_MISSING:
                 SwiftyChainLoggers.backend.debug("libsecret is missing required symbols")
                 throw SecretServiceUnavailability.libraryTooOld.error
+            case SWIFTYCHAIN_SECRET_DYNAMIC_LOADING_UNAVAILABLE:
+                SwiftyChainLoggers.backend.debug("This statically linked binary can't load libsecret-1.so.0")
+                throw SecretServiceUnavailability.dynamicLoadingUnavailable.error
             default:
                 SwiftyChainLoggers.backend.debug("libsecret-1.so.0 could not be loaded")
                 throw SecretServiceUnavailability.libraryMissing.error
             }
         }
 
-        private func ensureSessionBus(cancellable: OpaquePointer?) throws {
+        private func ensureSessionBus(timer: TimeoutTimer) throws {
             var error: OpaquePointer?
-            if swiftychain_secret_session_bus_available(cancellable, &error) == 0 {
-                if let error {
-                    swiftychain_secret_error_free(error)
-                }
-                SwiftyChainLoggers.backend.debug("No D-Bus session bus is available")
-                throw SecretServiceUnavailability.noSessionBus.error
+            guard swiftychain_secret_session_bus_available(timer.cancellable, &error) == 0 else { return }
+            var failure: SecretServiceFailure?
+            if let error {
+                let domain = swiftychain_secret_error_domain(error).map { String(cString: $0) } ?? "unknown"
+                failure = SecretServiceFailure(domain: domain, code: swiftychain_secret_error_code(error))
+                swiftychain_secret_error_free(error)
             }
+            let keychainError = SecretServiceErrors.sessionBusError(for: failure, timerFired: timer.fired)
+            SwiftyChainLoggers.backend.debug(
+                "Could not connect to the D-Bus session bus error=\(keychainError.logName, privacy: .public)"
+            )
+            throw keychainError
         }
 
         private func readItem(
@@ -326,7 +516,7 @@
             schema: SecretServiceSchema,
             loadSecret: Bool,
             cancellable: OpaquePointer?
-        ) throws -> SecretServiceItem {
+        ) throws -> SecretServiceItem? {
             var attributes: [String: String] = [:]
             if let table = swiftychain_secret_item_attributes(item) {
                 defer { swiftychain_secret_attributes_free(table) }
@@ -347,7 +537,13 @@
             if loadSecret {
                 var error: OpaquePointer?
                 let value = swiftychain_secret_item_secret(item, cancellable, &error)
-                try throwIfFailed(error)
+                do {
+                    try throwIfFailed(error)
+                } catch let failure as SecretServiceFailure where SecretServiceErrors.isNoSuchObject(failure) {
+                    // Another process deleted the item after the search found it.
+                    SwiftyChainLoggers.backend.debug("A Secret Service item disappeared while being read")
+                    return nil
+                }
                 if let value {
                     secret = copySecret(value)
                     swiftychain_secret_value_free(value)
@@ -387,35 +583,54 @@
         }
     }
 
-    /// Cancels a `GCancellable` when the timeout elapses, unless disarmed first.
-    // `@unchecked Sendable`: GCancellable is documented as thread-safe. The fire block
-    // retains the timer until it has finished cancelling, so `deinit` can never free
-    // the cancellable while a concurrent cancel still references it, and `workItem` is
-    // touched only by the thread that owns the timer.
-    private final class TimeoutTimer: @unchecked Sendable {
-        let cancellable: OpaquePointer?
-        private let didFire = Atomic(false)
-        private var workItem: DispatchWorkItem?
+    /// One item found by ``SecretServiceClient/replace(_:label:data:)``, with the label
+    /// and secret it had before the update.
+    private struct StoredItem {
+        let handle: OpaquePointer
+        let item: SecretServiceItem
+        let secret: Data
+    }
 
-        var fired: Bool { didFire.load(ordering: .acquiring) }
+    /// Cancels a `GCancellable` at a deadline, unless disarmed first.
+    ///
+    /// Disarming cancels the dispatch timer, which releases its handler right away, so a
+    /// finished call doesn't keep its timer and `GCancellable` alive until the deadline.
+    private final class TimeoutTimer {
+        private let state: TimeoutState
+        private let source: any DispatchSourceTimer
 
-        init(after timeout: Duration) {
-            cancellable = swiftychain_secret_cancellable_new()
-            let components = timeout.components
-            let nanoseconds = components.seconds * 1_000_000_000 + components.attoseconds / 1_000_000_000
-            let workItem = DispatchWorkItem {
-                self.didFire.store(true, ordering: .releasing)
-                if let cancellable = self.cancellable {
+        var cancellable: OpaquePointer? { state.cancellable }
+        var fired: Bool { state.fired.load(ordering: .acquiring) }
+
+        init(deadline: DispatchTime) {
+            let state = TimeoutState()
+            self.state = state
+            source = DispatchSource.makeTimerSource(queue: .global())
+            source.setEventHandler {
+                state.fired.store(true, ordering: .releasing)
+                if let cancellable = state.cancellable {
                     swiftychain_secret_cancellable_cancel(cancellable)
                 }
             }
-            self.workItem = workItem
-            DispatchQueue.global().asyncAfter(deadline: .now() + .nanoseconds(Int(nanoseconds)), execute: workItem)
+            source.schedule(deadline: deadline)
+            source.resume()
         }
 
         func disarm() {
-            workItem?.cancel()
-            workItem = nil
+            source.cancel()
+        }
+    }
+
+    /// The `GCancellable` a ``TimeoutTimer`` cancels. The timer's handler holds it, so it
+    /// is freed only after both the call and any in-flight cancel are done with it.
+    // `@unchecked Sendable`: GCancellable is documented as thread-safe, and `fired` is
+    // atomic.
+    private final class TimeoutState: @unchecked Sendable {
+        let cancellable: OpaquePointer?
+        let fired = Atomic(false)
+
+        init() {
+            cancellable = swiftychain_secret_cancellable_new()
         }
 
         deinit {

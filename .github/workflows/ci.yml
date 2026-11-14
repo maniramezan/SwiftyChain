@@ -214,7 +214,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            libsecret-1-0 gnome-keyring dbus-x11 procps python3-dbus
+            libsecret-1-0 libsecret-tools gnome-keyring dbus-x11 procps python3-dbus
 
       - name: Test without a session bus
         env:
@@ -262,15 +262,94 @@ jobs:
           scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}"
           -Xswiftc -warnings-as-errors --filter SecretServiceLockedTests
 
+      - name: Test recovery after the keyring daemon restarts
+        timeout-minutes: 15
+        env:
+          SWIFTYCHAIN_SECRET_SERVICE_RESTART: "1"
+        run: >-
+          scripts/with-gnome-keyring.sh swift test --traits "${TRAITS}"
+          -Xswiftc -warnings-as-errors --filter SecretServiceRestartTests
+
       - name: Test the timeout against a stopped keyring daemon
         timeout-minutes: 15
         env:
           SWIFTYCHAIN_SECRET_SERVICE_HUNG: "1"
         run: |
+          # The inner shell expands the variable, which the keyring script sets.
+          # shellcheck disable=SC2016
           scripts/with-gnome-keyring.sh bash -c '
-            pkill -STOP -x gnome-keyring-d
+            pkill -STOP -f -- "--control-directory=$SWIFTYCHAIN_KEYRING_CONTROL_DIRECTORY"
             exec "$@"
           ' _ swift test --traits "${TRAITS}" -Xswiftc -warnings-as-errors --filter SecretServiceTimeoutTests
+
+  # A binary built with the Static Linux SDK (musl) can't dlopen libsecret, so the
+  # backend must report that rather than claim libsecret is missing.
+  static-linux:
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 30
+    container: swift:6.4.2-noble
+    env:
+      STATIC_SDK_URL: https://download.swift.org/swift-6.4.2-release/static-sdk/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz
+      STATIC_SDK_CHECKSUM: 3786b179936d9cc9e266dd506bd1654176358d7b25288e243359f4d17cc4dc5a
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Static Linux SDK
+        run: swift sdk install "${STATIC_SDK_URL}" --checksum "${STATIC_SDK_CHECKSUM}"
+
+      - name: Install libsecret
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsecret-1-0
+
+      # The Static Linux SDK has no Swift Testing, so a small program built against this
+      # checkout checks the error instead. libsecret is installed, so only the static
+      # binary's lack of dlopen can make it fail.
+      - name: Check a statically linked build
+        run: |
+          probe="$(mktemp -d)"
+          mkdir -p "$probe/Sources/StaticProbe"
+          cat > "$probe/Package.swift" <<EOF
+          // swift-tools-version: 6.3
+          import PackageDescription
+          let package = Package(
+              name: "StaticProbe",
+              dependencies: [.package(path: "$GITHUB_WORKSPACE")],
+              targets: [
+                  .executableTarget(
+                      name: "StaticProbe",
+                      dependencies: [.product(name: "SwiftyChain", package: "$(basename "$GITHUB_WORKSPACE")")]
+                  )
+              ]
+          )
+          EOF
+          cat > "$probe/Sources/StaticProbe/main.swift" <<'EOF'
+          import SwiftyChain
+
+          do {
+              _ = try await Keychain().loadIfPresent(key: KeychainKey<String>(service: "ci.static", account: "a"))
+              fatalError("Expected the Secret Service to be unavailable in a static binary")
+          } catch KeychainError.platformUnsupported(let message) where message.contains("statically linked") {
+              print("OK: \(message)")
+          } catch {
+              fatalError("Unexpected error: \(error)")
+          }
+          EOF
+          swift run --package-path "$probe" --swift-sdk "$(uname -m)-swift-linux-musl" StaticProbe
+
+  # FreeBSD has no keychain backend; this proves the package, including its swift-log
+  # dependency, builds there and its tests pass. swiftlang's reusable workflow runs the
+  # only FreeBSD toolchain published for CI, a main-branch nightly, in a FreeBSD VM.
+  freebsd:
+    name: freebsd
+    needs: lint
+    uses: swiftlang/github-workflows/.github/workflows/swift_package_test.yml@0.0.17
+    with:
+      enable_linux_checks: false
+      enable_windows_checks: false
+      enable_freebsd_checks: true
+      freebsd_build_command: swift test
 
   # Nothing else compiles the fallback for platforms without a keychain backend
   # (UnsupportedPlatformBackend), so build the package for WebAssembly.

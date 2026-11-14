@@ -4,6 +4,7 @@
 
 #include <dlfcn.h>
 #include <pthread.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /*
@@ -142,10 +143,32 @@ static struct {
     void (*connection_set_exit_on_close)(void *, swiftychain_gboolean);
     const char *(*quark_to_string)(swiftychain_gquark);
     void (*error_free)(swiftychain_secret_error *);
+    size_t (*item_get_type)(void);
+    swiftychain_gboolean (*type_check_instance_is_a)(void *, size_t);
+    swiftychain_gboolean (*item_set_secret)(
+        void *,
+        swiftychain_secret_value *,
+        swiftychain_secret_cancellable *,
+        swiftychain_secret_error **
+    );
+    swiftychain_gboolean (*item_set_label)(
+        void *,
+        const char *,
+        swiftychain_secret_cancellable *,
+        swiftychain_secret_error **
+    );
+    void (*service_disconnect)(void);
 } fn;
 
 static swiftychain_secret_load_status load_status = SWIFTYCHAIN_SECRET_LIBRARY_MISSING;
 static pthread_once_t load_once = PTHREAD_ONCE_INIT;
+
+/*
+ * Whether GIO was already in the process before SwiftyChain loaded libsecret. GIO's
+ * shared session-bus connection then belongs to the host, which may rely on its
+ * default of exiting when the bus goes away, so SwiftyChain leaves it alone.
+ */
+static int host_loaded_gio = 0;
 
 #define RESOLVE(field, symbol)                               \
     do {                                                     \
@@ -156,14 +179,34 @@ static pthread_once_t load_once = PTHREAD_ONCE_INIT;
         }                                                    \
     } while (0)
 
+static int dynamic_loading_supported(void) {
+    /*
+     * Statically linked binaries, such as those built with the Static Linux SDK
+     * (musl), can't load shared libraries: their dlopen always fails, even for the
+     * program itself.
+     */
+    void *self = dlopen(NULL, RTLD_LAZY);
+    if (self == NULL) {
+        return 0;
+    }
+    dlclose(self);
+    return 1;
+}
+
 static void load_library(void) {
+    void *gio = dlopen("libgio-2.0.so.0", RTLD_LAZY | RTLD_NOLOAD);
+    if (gio != NULL) {
+        host_loaded_gio = 1;
+        dlclose(gio);
+    }
     /*
      * RTLD_LOCAL keeps libsecret's and GLib's symbols out of the host's global
      * namespace; every symbol used here is resolved through this handle with dlsym.
      */
     void *handle = dlopen("libsecret-1.so.0", RTLD_NOW | RTLD_LOCAL);
     if (handle == NULL) {
-        load_status = SWIFTYCHAIN_SECRET_LIBRARY_MISSING;
+        load_status = dynamic_loading_supported() ? SWIFTYCHAIN_SECRET_LIBRARY_MISSING
+                                                  : SWIFTYCHAIN_SECRET_DYNAMIC_LOADING_UNAVAILABLE;
         return;
     }
     RESOLVE(store, "secret_password_storev_binary_sync");
@@ -192,6 +235,11 @@ static void load_library(void) {
     RESOLVE(connection_set_exit_on_close, "g_dbus_connection_set_exit_on_close");
     RESOLVE(quark_to_string, "g_quark_to_string");
     RESOLVE(error_free, "g_error_free");
+    RESOLVE(item_get_type, "secret_item_get_type");
+    RESOLVE(type_check_instance_is_a, "g_type_check_instance_is_a");
+    RESOLVE(item_set_secret, "secret_item_set_secret_sync");
+    RESOLVE(item_set_label, "secret_item_set_label_sync");
+    RESOLVE(service_disconnect, "secret_service_disconnect");
     load_status = SWIFTYCHAIN_SECRET_LOADED;
 }
 
@@ -225,12 +273,20 @@ int swiftychain_secret_session_bus_available(
     }
     /*
      * The shared session connection raises SIGTERM in the process when the bus
-     * disconnects. A keychain library must not terminate a long-running host, so a
-     * lost bus surfaces as an error from the next call instead.
+     * disconnects. When the host doesn't use GLib itself, SwiftyChain is the only
+     * user of that connection, and a keychain library must not terminate a
+     * long-running host, so a lost bus surfaces as an error from the next call
+     * instead. A GLib host keeps the behavior it chose.
      */
-    fn.connection_set_exit_on_close(connection, 0);
+    if (!host_loaded_gio) {
+        fn.connection_set_exit_on_close(connection, 0);
+    }
     fn.object_unref(connection);
     return 1;
+}
+
+void swiftychain_secret_service_reset(void) {
+    fn.service_disconnect();
 }
 
 swiftychain_secret_attributes *swiftychain_secret_attributes_new(void) {
@@ -312,6 +368,32 @@ swiftychain_secret_attributes *swiftychain_secret_item_attributes(swiftychain_se
 
 char *swiftychain_secret_item_label(swiftychain_secret_item *item) {
     return fn.item_label(item);
+}
+
+int swiftychain_secret_item_is_service_item(swiftychain_secret_item *item) {
+    return fn.type_check_instance_is_a(item, fn.item_get_type()) ? 1 : 0;
+}
+
+int swiftychain_secret_item_set_secret(
+    swiftychain_secret_item *item,
+    const void *bytes,
+    size_t length,
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+) {
+    swiftychain_secret_value *value = fn.value_new(bytes, (ptrdiff_t)length, "application/octet-stream");
+    swiftychain_gboolean stored = fn.item_set_secret(item, value, cancellable, error);
+    fn.value_unref(value);
+    return stored ? 1 : 0;
+}
+
+int swiftychain_secret_item_set_label(
+    swiftychain_secret_item *item,
+    const char *label,
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+) {
+    return fn.item_set_label(item, label, cancellable, error) ? 1 : 0;
 }
 
 swiftychain_secret_value *swiftychain_secret_item_secret(

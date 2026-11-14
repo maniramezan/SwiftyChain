@@ -16,6 +16,7 @@ package struct SecretServiceFailure: Sendable, Hashable {
 package enum SecretServiceUnavailability: Sendable, Hashable {
     case libraryMissing
     case libraryTooOld
+    case dynamicLoadingUnavailable
     case noSessionBus
     case noProvider
     case noDefaultCollection
@@ -28,6 +29,10 @@ package enum SecretServiceUnavailability: Sendable, Hashable {
             )
         case .libraryTooOld:
             .platformUnsupported("The installed libsecret is too old. SwiftyChain needs libsecret 0.19 or newer")
+        case .dynamicLoadingUnavailable:
+            .platformUnsupported(
+                "This binary is statically linked and can't load libsecret. Build without the static Linux SDK to use the Secret Service"
+            )
         case .noSessionBus:
             .platformUnsupported("No D-Bus session bus is available, so the Secret Service can't be reached")
         case .noProvider:
@@ -64,6 +69,48 @@ package enum SecretServiceErrors {
     /// Whether libsecret reported that an object, such as a collection, doesn't exist.
     package static func isNoSuchObject(_ failure: SecretServiceFailure) -> Bool {
         failure.domain == secretDomain && failure.code == secretNoSuchObject
+    }
+
+    /// Whether, after this error, libsecret's cached Secret Service proxy and session
+    /// should be dropped so the next call reconnects.
+    ///
+    /// A restarted keyring daemon forgets the session libsecret opened, and a restarted
+    /// bus closes the connection, so every later call through the cached proxy fails.
+    /// Outcomes that come from the keyring's contents or the user, such as a missing
+    /// item or a dismissed prompt, leave the connection healthy.
+    package static func shouldResetConnection(after error: KeychainError) -> Bool {
+        switch error {
+        case .itemNotFound, .duplicateItem, .userPresenceRequired, .authenticationFailed:
+            false
+        default:
+            true
+        }
+    }
+
+    /// Whether the failure means the request never reached a live Secret Service, as
+    /// when libsecret's cached proxy still addresses a keyring daemon that has since
+    /// restarted. Such a call can be retried safely once the connection is reset.
+    package static func isStaleConnection(_ failure: SecretServiceFailure) -> Bool {
+        guard failure.domain == dbusDomain else { return false }
+        return [dbusServiceUnknown, dbusNameHasNoOwner, dbusDisconnected].contains(failure.code)
+    }
+
+    /// The error for a failed connection to the D-Bus session bus.
+    ///
+    /// A bus that is slow or hung is transient, so it reports ``KeychainError/timedOut``;
+    /// only a bus that can't be reached at all means the Secret Service is unavailable.
+    ///
+    /// - Parameters:
+    ///   - failure: the GLib error, when there was one.
+    ///   - timerFired: whether SwiftyChain's own timeout cancelled the connection attempt.
+    package static func sessionBusError(for failure: SecretServiceFailure?, timerFired: Bool) -> KeychainError {
+        if timerFired {
+            return .timedOut
+        }
+        if let failure, keychainError(for: failure, timerFired: false) == .timedOut {
+            return .timedOut
+        }
+        return SecretServiceUnavailability.noSessionBus.error
     }
 
     /// - Parameter timerFired: whether SwiftyChain's own timeout cancelled the call.

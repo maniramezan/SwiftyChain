@@ -313,4 +313,5 @@ The keyring unlocks asynchronously. If the first call races the unlock it throws
 ``KeychainError/userPresenceRequired``, so wait until the default collection reports it is
 unlocked before running tests. SwiftyChain's own
 [`scripts/with-gnome-keyring.sh`](https://github.com/maniramezan/SwiftyChain/blob/main/scripts/with-gnome-keyring.sh)
-does this and stops the daemons afterwards.
+does this, keeps the keyring in a temporary directory instead of `~/.local/share/keyrings`,
+and stops only the daemons it started.

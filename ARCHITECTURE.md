@@ -64,9 +64,18 @@ before calling the backend, so an option a platform can't honor throws
 - **Linux**: the actor runs on `KeychainExecutor`, one serial dispatch queue shared by every
   `Keychain` instance. libsecret calls can block for up to the backend timeout (an unlock
   prompt or a hung daemon), and blocking Swift's cooperative pool would stall unrelated tasks.
-- `SecretServiceClient` serializes every libsecret call process-wide with one static lock, so
-  the duplicate check and the write in `add` can't interleave with another `Keychain` or
-  `KeychainStorage` in the same process. Separate processes still race.
+- `SecretServiceClient` serializes every libsecret call process-wide through one static
+  semaphore, so the duplicate check and the write in `add` can't interleave with another
+  `Keychain` or `KeychainStorage` in the same process. Separate processes still race. Each
+  call's deadline is fixed before it waits for the semaphore, so callers queued behind a
+  hung call time out together instead of one after another.
+- `update` changes each matching item in place (`secret_item_set_secret` / `set_label`),
+  in whichever collection holds it, after reading every match first; a write that fails
+  part-way restores the items already changed. libsecret's file backend, used in some
+  sandboxes, has one collection, so there the item is stored again with its attributes.
+- After a failure that may mean the keyring daemon or the bus restarted, the client drops
+  libsecret's cached service proxy (`secret_service_disconnect`). A call that found the
+  proxy addressing a daemon that no longer exists is retried once on a fresh connection.
 
 `@KeychainStorage` is synchronous and calls its backend on the caller's thread, bypassing the
 actor. Prefer the actor on the main thread, especially on Linux.

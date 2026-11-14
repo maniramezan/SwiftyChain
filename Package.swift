@@ -9,7 +9,9 @@ let traitDefines: [SwiftSetting] = [
 ]
 
 let applePlatforms: [Platform] = [.macOS, .macCatalyst, .iOS, .tvOS, .watchOS, .visionOS]
-let nonApplePlatforms: [Platform] = [.linux, .android, .windows, .openbsd, .wasi]
+// Every platform without OSLog, which SwiftyChainCore logs through swift-log instead.
+// FreeBSD has no named `Platform` in this tools version, so it is matched by name.
+let nonApplePlatforms: [Platform] = [.linux, .android, .windows, .openbsd, .wasi, .custom("freebsd")]
 
 let package = Package(
     name: "SwiftyChain",

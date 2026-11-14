@@ -63,21 +63,24 @@
             )
         }
 
-        /// Deletes matching items.
+        /// Deletes matching items. Succeeds when nothing matches.
         ///
         /// Every app built on SwiftyChain stores items under the same schemas, and the
         /// Secret Service has no app sandbox to scope a query the way Apple's keychain
         /// does. A delete must therefore name a non-empty service, server, or access
-        /// group; otherwise it would remove other SwiftyChain apps' items too.
+        /// group, or one exact item; otherwise it would remove other SwiftyChain apps'
+        /// items too. See ``SecretServiceAttributes/isScopedForDeletion(_:)``.
         package func delete(matching query: KeychainQuery) throws {
-            let scopes = [query.service, query.server, query.accessGroup]
-            guard scopes.contains(where: { $0?.isEmpty == false }) else {
-                SwiftyChainLoggers.backend.debug("Secret Service rejected an unscoped delete")
+            let matching = try SecretServiceAttributes.matching(query)
+            guard SecretServiceAttributes.isScopedForDeletion(matching) else {
+                SwiftyChainLoggers.backend.debug(
+                    "Secret Service rejected an unscoped delete for schema=\(matching.schema.name, privacy: .public)"
+                )
                 throw KeychainError.platformUnsupported(
                     "Deleting without a service, server, or access group is not supported by the Secret Service backend"
                 )
             }
-            try client.clear(SecretServiceAttributes.matching(query))
+            try client.clear(matching)
         }
     }
 #endif

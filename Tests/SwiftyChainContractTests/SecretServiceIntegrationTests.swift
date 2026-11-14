@@ -62,6 +62,45 @@
         }
 
         @Test
+        func anItemWithAnEmptyServiceCanBeDeleted() async throws {
+            let keychain = Keychain(backend: SecretServiceBackend())
+            let key = KeychainKey<String>(service: "", account: "\(Self.uniqueService()).account")
+            try await keychain.save("value", for: key)
+
+            try await keychain.delete(key: key)
+
+            #expect(try await keychain.loadIfPresent(key: key) == nil)
+        }
+
+        @Test
+        func deletingAnItemThatIsAlreadyGoneSucceeds() async throws {
+            let keychain = Keychain(backend: SecretServiceBackend())
+            let key = KeychainKey<String>(service: Self.uniqueService(), account: "token")
+
+            try await keychain.delete(key: key)
+        }
+
+        @Test
+        func updatesChangeTheItemInPlace() async throws {
+            let service = Self.uniqueService()
+            let key = KeychainKey<String>(service: service, account: "token")
+            let keychain = Keychain(backend: SecretServiceBackend())
+            defer { Self.cleanUp(service: service) }
+            try await keychain.save("first", for: key)
+
+            try await keychain.update("second", for: key)
+            try await keychain.upsert("third", for: key)
+
+            let matches = try SecretServiceClient(timeout: .seconds(30)).search(
+                SecretServiceAttributes.matching(KeychainQuery(itemClass: .genericPassword, service: service)),
+                loadSecrets: true
+            )
+            #expect(matches.count == 1)
+            #expect(matches.first?.secret == Data("third".utf8))
+            #expect(try await keychain.load(key: key) == "third")
+        }
+
+        @Test
         func concurrentSavesFromSeparateInstancesDetectDuplicates() async throws {
             let service = Self.uniqueService()
             let key = KeychainKey<String>(service: service, account: "token")

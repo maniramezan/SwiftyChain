@@ -181,8 +181,9 @@ xcrun swift test --traits "observation,cryptography"
 Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain.
 
 On Linux, run the same suite against GNOME Keyring. The helper script starts a private
-D-Bus session, unlocks a keyring, waits until it's ready, and stops the daemons afterwards
-(needs `libsecret-1-0`, `gnome-keyring`, `dbus-x11`, and `procps`):
+D-Bus session and a throwaway keyring in a temporary directory, so your own keyrings are
+never touched, waits until it's unlocked, and stops only the daemons it started
+(needs `libsecret-1-0`, `libsecret-tools`, `gnome-keyring`, `dbus-x11`, and `procps`):
 
 ```bash
 SWIFTYCHAIN_RUN_SECRET_SERVICE_INTEGRATION=1 scripts/with-gnome-keyring.sh swift test
