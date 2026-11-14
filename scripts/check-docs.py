@@ -17,6 +17,12 @@ REQUIRED_PAGES = [
     "swiftychain/gettingstarted",
     "swiftychain/linux",
     "swiftychain/architecture",
+    "swiftychain/migratingto2",
+    "swiftychain/keychainbackend",
+    "swiftychain/keychainquery",
+    "swiftychain/keychainattributes",
+    "swiftychain/keychainconfiguration",
+    "swiftychain/keychainaccesscontrol",
     "swiftychain/testing",
     "swiftychain/usingmacros",
     "swiftychain/internetpasswords",
@@ -33,7 +39,7 @@ REQUIRED_PAGES = [
 REQUIRED_TUTORIALS = ["swiftychaintutorials"]
 REQUIRED_TOPIC_GROUPS = ["Essentials", "Platforms", "Errors"]
 INTERNAL_NAMES = [
-    "securestoragebackend", "securestoragecapabilities", "keychainengine", "keychainquery",
+    "securestoragebackend", "securestoragecapabilities", "keychainengine",
     "platformdefaultbackend", "unsupportedplatformbackend", "inmemorystoragebackend",
     "secretservice", "applekeychainbackend", "swiftychainloggers",
 ]

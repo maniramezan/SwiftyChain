@@ -2,35 +2,48 @@
 
 ## Overview
 
-`KeychainBackend` is the low-level storage protocol used by ``KeychainStorage``.
-It operates on raw `Data` rather than typed values, which keeps the surface minimal
-enough for downstream test fakes.
-
-The `SwiftyChainTesting` product provides `InMemoryKeychainBackend`, a ready-made
-in-memory implementation. Alternatively, conform your own type to this protocol
-for custom storage needs.
+Implement this public storage contract and pass it to ``Keychain/init(backend:)`` or a
+``KeychainStorage`` initializer. ``KeychainQuery`` contains matching attributes only;
+``KeychainAttributes`` contains secret data and write policy. The engine handles typed
+serialization, capability validation, upsert, and observation for every backend.
 
 ```swift
-// Inject a test backend when unit-testing @KeychainStorage-based code
-let backend = InMemoryKeychainBackend() // from SwiftyChainTesting
+import SwiftyChain
+import SwiftyChainTesting
+
+let backend = InMemoryKeychainBackend()
+let keychain = Keychain(backend: backend)
 let storage = KeychainStorage<String>("token", service: "com.example", backend: backend)
 ```
 
-> Note: `KeychainBackend` is intentionally narrow. It does not cover internet passwords,
-> cryptographic keys, or bulk deletion — those are handled by ``KeychainProtocol`` and
-> the ``Keychain`` actor directly.
+A `nil` query attribute matches any value. `isSynchronizable: nil` matches local and
+synchronized items. An unset write attribute uses the platform default on add and leaves
+existing policy unchanged on update. Adding a duplicate throws ``KeychainError/duplicateItem``;
+reading or updating a missing item throws ``KeychainError/itemNotFound``. Delete succeeds
+when no item matches. `contains` and `accounts` return empty results for missing items.
+
+Declare optional features in ``capabilities``. `SwiftyChainTesting.InMemoryKeychainBackend`
+accepts a capability set for emulation. Crypto storage uses the public `KeychainCryptoBackend`
+refinement with the `cryptography` trait on Apple platforms.
+
+Platform-backed engines share observers. A custom backend gets a separate observer registry
+per engine, including when passed to multiple `Keychain` or `KeychainStorage` instances.
+See <doc:MigratingTo2>.
 
 ## Topics
 
-### Saving and Updating
+### Capabilities
 
-- ``save(_:service:account:accessGroup:accessibility:isSynchronizable:label:comment:)``
-- ``update(_:service:account:accessGroup:accessibility:isSynchronizable:label:comment:)``
+- ``capabilities``
 
-### Loading
+### Writing
 
-- ``load(service:account:accessGroup:isSynchronizable:)``
+- ``add(_:attributes:)``
+- ``update(matching:to:)``
+- ``delete(matching:)``
 
-### Deleting
+### Reading
 
-- ``delete(service:account:accessGroup:isSynchronizable:)``
+- ``data(matching:)``
+- ``contains(matching:)``
+- ``accounts(matching:)``

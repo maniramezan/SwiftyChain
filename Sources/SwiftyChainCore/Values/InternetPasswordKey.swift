@@ -140,7 +140,9 @@ public struct InternetPasswordKey: Sendable, Hashable {
     ///   - protocol: The internet protocol. Defaults to ``InternetProtocol/https``.
     ///   - authenticationType: The authentication type. Defaults to ``AuthenticationType/default``.
     ///   - accessGroup: The keychain access group. Defaults to `nil`.
+    ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
     ///   - accessibility: The accessibility policy. Defaults to `nil`, the platform default.
+    ///   - isSynchronizable: Whether to synchronize through iCloud Keychain. Defaults to `false`.
     public init(
         server: String,
         account: String,

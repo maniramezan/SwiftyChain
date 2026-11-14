@@ -20,10 +20,14 @@ extension KeychainError {
             "itemNotFound"
         case .duplicateItem:
             "duplicateItem"
+        case .userCanceled:
+            "userCanceled"
+        case .invalidArgument:
+            "invalidArgument"
         case .authenticationFailed:
             "authenticationFailed"
-        case .userPresenceRequired:
-            "userPresenceRequired"
+        case .interactionNotAllowed:
+            "interactionNotAllowed"
         case .unexpectedData:
             "unexpectedData"
         case .encodingFailed:

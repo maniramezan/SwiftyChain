@@ -21,15 +21,20 @@ let dataKey = KeychainKey<Data>(
 )
 ```
 
-Use the ``genericPassword(service:account:accessGroup:accessibility:isSynchronizable:)``
+Use the ``genericPassword(service:account:accessGroup:accessibility:accessControl:isSynchronizable:)``
 factory method for a shorter call site when label and comment are not needed.
+
+Accessibility defaults to `nil`: new items use the platform default, and updates preserve
+existing accessibility. Equality and hashing include service, account, access group, and
+synchronization only. Accessibility, access control, label, and comment are write policy.
+See <doc:MigratingTo2>.
 
 ## Topics
 
 ### Creating Keys
 
-- ``init(service:account:accessGroup:accessibility:isSynchronizable:label:comment:)``
-- ``genericPassword(service:account:accessGroup:accessibility:isSynchronizable:)``
+- ``init(service:account:accessGroup:accessibility:accessControl:isSynchronizable:label:comment:)``
+- ``genericPassword(service:account:accessGroup:accessibility:accessControl:isSynchronizable:)``
 
 ### Properties
 
@@ -37,6 +42,7 @@ factory method for a shorter call site when label and comment are not needed.
 - ``account``
 - ``accessGroup``
 - ``accessibility``
+- ``accessControl``
 - ``isSynchronizable``
 - ``label``
 - ``comment``

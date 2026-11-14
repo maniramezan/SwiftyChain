@@ -55,6 +55,7 @@
         /// - Parameters:
         ///   - tag: The private application tag (e.g., `"com.example.app.key-name"`).
         ///   - accessGroup: The keychain access group. Defaults to `nil`.
+        ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
         ///   - accessibility: The accessibility policy. Defaults to `nil`, the platform default.
         public init(
             tag: String,

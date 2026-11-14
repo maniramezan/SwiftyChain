@@ -54,6 +54,10 @@ public actor Keychain: KeychainProtocol {
     #endif
 
     /// Creates a new ``Keychain`` instance backed by the platform keychain.
+    ///
+    /// - Parameter configuration: The macOS store selection. The legacy login keychain
+    ///   is the default. Data protection uses a separate store and requires a signed,
+    ///   entitled host. Other platforms ignore this setting.
     public init(configuration: KeychainConfiguration = .init()) {
         self.engine = .platformDefault(configuration: configuration)
     }

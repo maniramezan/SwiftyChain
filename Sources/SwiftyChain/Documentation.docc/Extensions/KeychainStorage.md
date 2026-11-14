@@ -3,9 +3,9 @@
 ## Overview
 
 `@KeychainStorage` provides synchronous, `@AppStorage`-shaped access to
-optional keychain values. It bypasses the ``Keychain`` actor and reads or
-writes the keychain directly, so changes do **not** emit observation
-events from ``Keychain/observeKeychainChanges(service:accessGroup:)``.
+optional keychain values. It uses the same engine as ``Keychain``. Platform-backed
+wrappers emit events to observers shared with ``Keychain/shared``; a custom backend
+has a separate observer registry per engine. Calls run synchronously on the caller's thread.
 
 Use the initializer when you want property-wrapper ergonomics without
 manually creating a ``KeychainKey``. The minimal call requires:
@@ -16,7 +16,9 @@ manually creating a ``KeychainKey``. The minimal call requires:
 The remaining parameters are optional:
 
 - `accessGroup` — use when the value must be shared between multiple apps or extensions.
-- `accessibility` — controls when the item can be read, such as `.whenUnlocked`.
+- `accessibility` — defaults to `nil`: platform default on add, unchanged on update.
+- `accessControl` — requires user presence, biometry, or device passcode where supported.
+- `configuration` — selects the macOS legacy or data-protection store.
 - `isSynchronizable` — set to `true` to participate in iCloud Keychain sync (Apple platforms only).
 
 Both the wrapped getter and setter are non-mutating, so you can hold a
@@ -104,16 +106,15 @@ struct SyncedSecrets {
 }
 ```
 
-> Important: Because writes do not go through ``Keychain``, observers
-> registered with ``Keychain/observeKeychainChanges(service:accessGroup:)``
-> will not see updates made through `@KeychainStorage`. If you need change
-> notifications, use ``Keychain/shared`` directly.
+Pass `configuration: .init(macOSStore: .dataProtection)` to select the macOS
+data-protection keychain, or `accessControl: .userPresence` to require authentication.
+The default macOS legacy store rejects access control. See <doc:MigratingTo2>.
 
 ## Topics
 
 ### Creating
 
-- ``init(_:service:accessGroup:accessibility:isSynchronizable:)``
+- ``init(_:service:accessGroup:accessibility:accessControl:isSynchronizable:configuration:)``
 
 ### Accessing Values
 

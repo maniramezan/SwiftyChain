@@ -55,6 +55,7 @@ public struct KeychainKey<Value: KeychainStorable>: Sendable, Hashable {
     ///   - accessGroup: The access group for sharing items across apps. Defaults to `nil`.
     ///   - accessibility: Controls when the item is accessible. Defaults to `nil`, which uses
     ///     the platform default for new items and keeps an existing item's policy on update.
+    ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
     ///     Apple platforms only; on Linux, `true` makes operations throw ``KeychainError/platformUnsupported(_:)``.
     ///   - label: A human-readable label for the item. Defaults to `nil`.
