@@ -17,6 +17,9 @@ struct BackendFixture: Sendable, CustomTestStringConvertible {
     let canWriteSynchronizableItems: Bool
     /// Custom access groups need a keychain-sharing entitlement on Apple platforms.
     let canUseCustomAccessGroups: Bool
+    /// Whether the backend's storage belongs to the test alone, so a delete that names no
+    /// service can't remove the developer's own keychain items.
+    var isIsolated = false
 
     var testDescription: String { name }
 
@@ -26,8 +29,16 @@ struct BackendFixture: Sendable, CustomTestStringConvertible {
                 name: "in-memory",
                 make: { InMemoryKeychainBackend() },
                 canWriteSynchronizableItems: true,
-                canUseCustomAccessGroups: true
-            )
+                canUseCustomAccessGroups: true,
+                isIsolated: true
+            ),
+            BackendFixture(
+                name: "in-memory emulating Linux",
+                make: { InMemoryKeychainBackend(capabilities: EmulatedKeychainPlatform.linux.capabilities) },
+                canWriteSynchronizableItems: false,
+                canUseCustomAccessGroups: true,
+                isIsolated: true
+            ),
         ]
         #if canImport(Security)
             if ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1" {
@@ -296,6 +307,41 @@ struct BackendContractTests {
     #endif
 
     @Test(arguments: BackendFixture.available)
+    func unscopedDeletesFollowTheBackendsCapabilities(_ fixture: BackendFixture) async throws {
+        let backend = fixture.make()
+        let keychain = Keychain(backend: backend)
+        let kept = KeychainKey<String>(service: uniqueService(), account: "kept")
+        let unscopedQueries = [
+            KeychainDeleteQuery(),
+            KeychainDeleteQuery(service: ""),
+            KeychainDeleteQuery(itemClass: .internetPassword),
+        ]
+
+        try await withCleanup(keychain, services: [kept.service]) {
+            try await keychain.save("kept", for: kept)
+
+            if backend.capabilities.contains(.unscopedBulkDelete) {
+                guard fixture.isIsolated else { return }
+                for query in unscopedQueries {
+                    try await keychain.deleteAllItems(matching: query)
+                }
+                #expect(try await keychain.loadIfPresent(key: kept) == nil)
+            } else {
+                for query in unscopedQueries {
+                    await #expect(
+                        throws: KeychainError.platformUnsupported(
+                            "Deleting without a service, server, or access group is not supported by this keychain backend"
+                        )
+                    ) {
+                        try await keychain.deleteAllItems(matching: query)
+                    }
+                }
+                #expect(try await keychain.load(key: kept) == "kept")
+            }
+        }
+    }
+
+    @Test(arguments: BackendFixture.available)
     func internetPasswordsRoundTrip(_ fixture: BackendFixture) async throws {
         let keychain = Keychain(backend: fixture.make())
         let key = InternetPasswordKey(
@@ -427,6 +473,64 @@ struct CapabilityValidationTests {
             storage.projectedValue
                 == .platformUnsupported("Synchronizable items are not supported by this keychain backend")
         )
+    }
+}
+
+@Suite("Delete scoping")
+struct DeleteScopingTests {
+    @Test(
+        arguments: [
+            KeychainQuery(itemClass: .genericPassword, service: "com.example"),
+            KeychainQuery(itemClass: .genericPassword, accessGroup: "group.a"),
+            KeychainQuery(itemClass: .genericPassword, service: "", account: "token"),
+            KeychainQuery(itemClass: .internetPassword, server: "example.com"),
+            KeychainQuery(itemClass: .internetPassword, account: "alice", server: ""),
+        ]
+    )
+    func deletesNamingOneAppsItemsAreScoped(_ query: KeychainQuery) {
+        #expect(KeychainQueryValidator.isScoped(query))
+    }
+
+    @Test(
+        arguments: [
+            KeychainQuery(itemClass: .genericPassword),
+            KeychainQuery(itemClass: .genericPassword, service: ""),
+            KeychainQuery(itemClass: .genericPassword, account: "token"),
+            KeychainQuery(itemClass: .genericPassword, accessGroup: ""),
+            KeychainQuery(itemClass: .genericPassword, server: "example.com"),
+            KeychainQuery(itemClass: .internetPassword, service: "com.example"),
+            KeychainQuery(itemClass: .internetPassword, account: "alice", port: 443),
+        ]
+    )
+    func deletesThatWouldMatchOtherAppsItemsAreNotScoped(_ query: KeychainQuery) {
+        #expect(!KeychainQueryValidator.isScoped(query))
+    }
+
+    @Test
+    func onlyDeletesAreCheckedForScope() throws {
+        let unscoped = KeychainQuery(itemClass: .genericPassword)
+
+        try KeychainQueryValidator.validate(unscoped, for: .read, against: [])
+        #expect(throws: KeychainError.self) {
+            try KeychainQueryValidator.validate(unscoped, for: .delete, against: [])
+        }
+        try KeychainQueryValidator.validate(unscoped, for: .delete, against: .unscopedBulkDelete)
+    }
+
+    @Test
+    func linuxEmulationRejectsLinuxRestrictions() async throws {
+        let keychain = InMemoryKeychain(emulating: .linux)
+        let synced = KeychainKey<String>(service: "tests.emulation", account: "a", isSynchronizable: true)
+
+        await #expect(
+            throws: KeychainError.platformUnsupported("Synchronizable items are not supported by this keychain backend")
+        ) {
+            try await keychain.save("value", for: synced)
+        }
+        await #expect(throws: KeychainError.self) {
+            try await keychain.deleteAllItems(matching: KeychainDeleteQuery())
+        }
+        try await keychain.save("value", for: KeychainKey<String>(service: "tests.emulation", account: "b"))
     }
 }
 

@@ -5,9 +5,28 @@
 
     /// The ``KeychainBackend`` for Apple platforms, backed by the Security framework.
     package struct AppleKeychainBackend: KeychainBackend {
-        package let capabilities: KeychainBackendCapabilities = .all
+        package let capabilities: KeychainBackendCapabilities
 
-        package init() {}
+        package init() {
+            self.capabilities = Self.platformCapabilities
+        }
+
+        /// What this OS's keychain supports.
+        ///
+        /// The SDK compiles every `SecItem` attribute on every Apple OS, so these limits
+        /// come from the hardware and the services each OS runs, not from availability
+        /// annotations: tvOS accepts `kSecAttrSynchronizable` but never syncs items
+        /// through iCloud Keychain, and Apple TV has no biometry or device passcode.
+        package static var platformCapabilities: KeychainBackendCapabilities {
+            var capabilities: KeychainBackendCapabilities = [.accessGroups, .internetPasswords, .unscopedBulkDelete]
+            #if !os(tvOS)
+                capabilities.insert(.synchronizable)
+            #endif
+            #if Cryptography
+                capabilities.insert(.cryptoKeys)
+            #endif
+            return capabilities
+        }
 
         package func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
             logSecurityCall("SecItemAdd", query: query)

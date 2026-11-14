@@ -74,34 +74,6 @@ struct SecretServiceAttributesTests {
         #expect(try SecretServiceAttributes.label(for: custom, custom: "My token") == "My token")
     }
 
-    @Test(
-        arguments: [
-            KeychainQuery(itemClass: .genericPassword, service: "com.example"),
-            KeychainQuery(itemClass: .genericPassword, accessGroup: "group.a"),
-            KeychainQuery(itemClass: .genericPassword, service: "", account: "token"),
-            KeychainQuery(itemClass: .internetPassword, server: "example.com"),
-            KeychainQuery(itemClass: .internetPassword, account: "alice", server: ""),
-        ]
-    )
-    func deletesNamingOneAppsItemsAreScoped(_ query: KeychainQuery) throws {
-        #expect(SecretServiceAttributes.isScopedForDeletion(try SecretServiceAttributes.matching(query)))
-    }
-
-    @Test(
-        arguments: [
-            KeychainQuery(itemClass: .genericPassword),
-            KeychainQuery(itemClass: .genericPassword, service: ""),
-            KeychainQuery(itemClass: .genericPassword, account: "token"),
-            KeychainQuery(itemClass: .genericPassword, accessGroup: ""),
-            KeychainQuery(itemClass: .genericPassword, server: "example.com"),
-            KeychainQuery(itemClass: .internetPassword, service: "com.example"),
-            KeychainQuery(itemClass: .internetPassword, account: "alice", port: 443),
-        ]
-    )
-    func deletesThatWouldMatchOtherAppsItemsAreNotScoped(_ query: KeychainQuery) throws {
-        #expect(!SecretServiceAttributes.isScopedForDeletion(try SecretServiceAttributes.matching(query)))
-    }
-
     @Test
     func storedEnumValuesAreUnique() {
         let protocols: [InternetProtocol] = [

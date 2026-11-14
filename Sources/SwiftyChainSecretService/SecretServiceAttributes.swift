@@ -75,29 +75,6 @@ package enum SecretServiceAttributes {
         return SecretServiceItemQuery(schema: schema, attributes: attributes)
     }
 
-    /// Whether a delete with these attributes is limited to one app's items.
-    ///
-    /// Every app built on SwiftyChain shares the same schemas, so a delete must name
-    /// something that belongs to the caller: a non-empty service (or server, for
-    /// internet passwords) or access group, or an exact item, meaning a service or
-    /// server together with an account. Only the schema's own attributes count,
-    /// because ``matching(_:)`` drops the rest; a generic-password query that names
-    /// only a server would otherwise match every generic password.
-    package static func isScopedForDeletion(_ query: SecretServiceItemQuery) -> Bool {
-        let primary =
-            switch query.schema {
-            case .genericPassword: query.attributes["service"]
-            case .internetPassword: query.attributes["server"]
-            }
-        if let primary, !primary.isEmpty {
-            return true
-        }
-        if let accessGroup = query.attributes["accessGroup"], !accessGroup.isEmpty {
-            return true
-        }
-        return primary != nil && query.attributes["account"] != nil
-    }
-
     /// The complete attribute set stored with a new item.
     package static func identity(for query: KeychainQuery) throws -> SecretServiceItemQuery {
         let schema = try schema(for: query.itemClass)
