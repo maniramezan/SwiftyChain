@@ -7,7 +7,10 @@
     package struct AppleKeychainBackend: KeychainBackend {
         package let capabilities: KeychainBackendCapabilities
 
-        package init() {
+        private let configuration: KeychainConfiguration
+
+        package init(configuration: KeychainConfiguration = .init()) {
+            self.configuration = configuration
             self.capabilities = Self.platformCapabilities
         }
 
@@ -151,6 +154,16 @@
             return secAttributes
         }
 
+        private func configuredQuery(_ attributes: [String: Any]) -> [String: Any] {
+            var attributes = attributes
+            #if os(macOS)
+                if configuration.macOSStore == .dataProtection {
+                    attributes[kSecUseDataProtectionKeychain as String] = true
+                }
+            #endif
+            return attributes
+        }
+
         private var deleteSafetyCap: Int { 10_000 }
 
         // Query used to find existing items. When the caller leaves
@@ -201,7 +214,7 @@
                 attributes[kSecAttrAuthenticationType as String] = authenticationType.secValue
             }
 
-            return attributes
+            return configuredQuery(attributes)
         }
         // swiftlint:enable cyclomatic_complexity
 
@@ -376,10 +389,10 @@
                 if let accessGroup {
                     attributes[kSecAttrAccessGroup as String] = accessGroup
                 }
-                return attributes
+                return configuredQuery(attributes)
             }
 
-            private func cryptoSecQuery(from query: CryptoKeyQuery) -> [String: Any] {
+            package func cryptoSecQuery(from query: CryptoKeyQuery) -> [String: Any] {
                 var attributes: [String: Any] = [
                     kSecClass as String: kSecClassKey,
                     kSecAttrApplicationTag as String: Data(query.tag.utf8),
@@ -387,7 +400,7 @@
                 if let accessGroup = query.accessGroup {
                     attributes[kSecAttrAccessGroup as String] = accessGroup
                 }
-                return attributes
+                return configuredQuery(attributes)
             }
         }
     #endif

@@ -9,9 +9,9 @@ import Foundation
 /// Chooses the ``KeychainBackend`` that `Keychain()` and `KeychainStorage` use
 /// when the caller doesn't supply one.
 package enum PlatformDefaultBackend {
-    package static func make() -> any KeychainBackend {
+    package static func make(configuration: KeychainConfiguration = .init()) -> any KeychainBackend {
         #if canImport(Security)
-            AppleKeychainBackend()
+            AppleKeychainBackend(configuration: configuration)
         #elseif os(Linux)
             SecretServiceBackend()
         #else
