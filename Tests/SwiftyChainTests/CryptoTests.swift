@@ -9,6 +9,10 @@
     private final class MockCryptoBackend: KeychainCryptoBackend, @unchecked Sendable {
         let capabilities: KeychainBackendCapabilities = .all
 
+        let rejectsUpdates: Bool
+
+        init(rejectsUpdates: Bool = false) { self.rejectsUpdates = rejectsUpdates }
+
         private var storedKeys: [String: SecKey] = [:]
         private(set) var deletedQueries: [CryptoKeyQuery] = []
         private(set) var addedAttributes: [CryptoKeyAttributes] = []
@@ -26,6 +30,12 @@
             }
             storedKeys[query.tag] = key
             addedAttributes.append(attributes)
+        }
+
+        func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
+            if rejectsUpdates { throw KeychainError.operationFailed(-50) }
+            guard storedKeys[query.tag] != nil else { throw KeychainError.itemNotFound }
+            storedKeys[query.tag] = key
         }
 
         func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
@@ -195,6 +205,55 @@
 
         #expect(whenUnlocked == afterFirstUnlock)
         #expect(Set([whenUnlocked, afterFirstUnlock]).count == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func cryptoUpsertDoesNotDeleteExistingKeys(_ rejectsUpdates: Bool) async throws {
+        let backend = MockCryptoBackend(rejectsUpdates: rejectsUpdates)
+        let keychain = Keychain(backend: backend)
+        let first = try makeECKey()
+        let second = try makeECKey()
+        let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.upsert")
+        try await keychain.upsertCryptoKey(StoredSecKey(first), for: ref)
+        if rejectsUpdates {
+            await #expect(throws: KeychainError.operationFailed(-50)) {
+                try await keychain.upsertCryptoKey(StoredSecKey(second), for: ref)
+            }
+        } else {
+            try await keychain.upsertCryptoKey(StoredSecKey(second), for: ref)
+        }
+        let stored = try await keychain.loadCryptoKey(keyRef: ref)
+        #expect(CFEqual(stored.rawValue, rejectsUpdates ? first : second))
+        #expect(backend.deletedQueries.isEmpty)
+    }
+
+    @Test(
+        .enabled(if: ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1"))
+    func appleCryptoUpsertPreservesTheOriginalWhenLegacyStoreRejectsUpdate() async throws {
+        let keychain = Keychain()
+        let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.apple.upsert.\(UUID().uuidString)")
+        let first = try makeECKey()
+        let second = try makeECKey()
+        do {
+            try await keychain.upsertCryptoKey(StoredSecKey(first), for: ref)
+            let original = try await keychain.loadCryptoKey(keyRef: ref)
+            let originalData = try #require(SecKeyCopyExternalRepresentation(original.rawValue, nil))
+            #expect(originalData == SecKeyCopyExternalRepresentation(first, nil))
+            await #expect(
+                throws: KeychainError.invalidArgument(
+                    "The macOS legacy store cannot replace cryptographic key material in place; use the data-protection store"
+                )
+            ) {
+                try await keychain.upsertCryptoKey(StoredSecKey(second), for: ref)
+            }
+            let stored = try await keychain.loadCryptoKey(keyRef: ref)
+            let data = try #require(SecKeyCopyExternalRepresentation(stored.rawValue, nil))
+            #expect(data == originalData)
+            try await keychain.deleteCryptoKey(keyRef: ref)
+        } catch {
+            try? await keychain.deleteCryptoKey(keyRef: ref)
+            throw error
+        }
     }
 
     private func makeECKey() throws -> SecKey {

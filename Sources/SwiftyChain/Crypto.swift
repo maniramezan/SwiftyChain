@@ -83,11 +83,8 @@
     extension Keychain {
         /// Saves a new cryptographic key to the keychain.
         ///
-        /// Like ``Keychain/save(_:for:)``, this never replaces an existing item. To replace
-        /// a key, delete it with ``deleteCryptoKey(keyRef:)`` first. SwiftyChain has no
-        /// crypto-key upsert: the keychain can't swap a key's material in place, so
-        /// replacing one always means deleting it, and losing it if the new key can't be
-        /// stored.
+        /// Like ``Keychain/save(_:for:)``, this throws on duplicates. Use
+        /// ``upsertCryptoKey(_:for:)`` to update an existing key without deleting it.
         ///
         /// - Parameters:
         ///   - key: The ``StoredSecKey`` wrapping the `SecKey` to persist.
@@ -101,6 +98,15 @@
         /// ```
         public func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
             try engine.saveCryptoKey(key, for: keyRef)
+        }
+
+        /// Adds a key or updates its material in place when it already exists.
+        ///
+        /// Apple requires exportable material for an update. The macOS legacy store
+        /// rejects material updates with ``KeychainError/invalidArgument(_:)``. Unsupported updates fail
+        /// without deleting the stored key.
+        public func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
+            try engine.upsertCryptoKey(key, for: keyRef)
         }
 
         /// Loads a cryptographic key from the keychain.
@@ -157,6 +163,18 @@
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey succeeded for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
             )
+        }
+
+        package func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
+            do {
+                try saveCryptoKey(key, for: keyRef)
+            } catch KeychainError.duplicateItem {
+                try validateCryptoReference(keyRef, writing: true)
+                try cryptoBackend().updateCryptoKey(
+                    key.rawValue, query: cryptoKeyQuery(for: keyRef),
+                    attributes: CryptoKeyAttributes(
+                        accessibility: keyRef.accessibility, accessControl: keyRef.accessControl))
+            }
         }
 
         package func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey {

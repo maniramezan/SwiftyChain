@@ -123,6 +123,8 @@ public struct InternetPasswordKey: Sendable, Hashable {
     public let authenticationType: AuthenticationType
     /// The access group for sharing across apps, or `nil` for the default group.
     public let accessGroup: String?
+    /// Whether this password syncs through iCloud Keychain.
+    public let isSynchronizable: Bool
     /// The accessibility policy for this item, or `nil` for the platform default.
     public let accessibility: KeychainAccessibility?
     /// Authentication required when accessing the stored item.
@@ -148,7 +150,8 @@ public struct InternetPasswordKey: Sendable, Hashable {
         authenticationType: AuthenticationType = .default,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility? = nil,
-        accessControl: KeychainAccessControl? = nil
+        accessControl: KeychainAccessControl? = nil,
+        isSynchronizable: Bool = false
     ) {
         self.server = server
         self.account = account
@@ -159,6 +162,7 @@ public struct InternetPasswordKey: Sendable, Hashable {
         self.accessGroup = accessGroup
         self.accessibility = accessibility
         self.accessControl = accessControl
+        self.isSynchronizable = isSynchronizable
     }
 
     /// Two keys are equal when they identify the same keychain item.
@@ -170,6 +174,7 @@ public struct InternetPasswordKey: Sendable, Hashable {
             && lhs.protocol == rhs.protocol
             && lhs.authenticationType == rhs.authenticationType
             && lhs.accessGroup == rhs.accessGroup
+            && lhs.isSynchronizable == rhs.isSynchronizable
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -180,5 +185,6 @@ public struct InternetPasswordKey: Sendable, Hashable {
         hasher.combine(`protocol`)
         hasher.combine(authenticationType)
         hasher.combine(accessGroup)
+        hasher.combine(isSynchronizable)
     }
 }

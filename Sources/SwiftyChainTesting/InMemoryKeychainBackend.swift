@@ -184,6 +184,14 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
             }
         }
 
+        public func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
+            let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
+            try cryptoKeys.withLock { keys in
+                guard keys[identity] != nil else { throw KeychainError.itemNotFound }
+                keys[identity] = StoredSecKey(key)
+            }
+        }
+
         public func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
             let identity = CryptoIdentity(tag: query.tag, accessGroup: query.accessGroup)
             guard let stored = cryptoKeys.withLock({ $0[identity] }) else {
