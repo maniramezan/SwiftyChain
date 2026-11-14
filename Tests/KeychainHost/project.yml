@@ -1,0 +1,89 @@
+# Host apps for DataProtectionIntegrationTests. Generate with XcodeGen; see
+# scripts/run-keychain-host-tests.sh. The generated project is not checked in.
+name: KeychainHost
+options:
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+packages:
+  SwiftyChain:
+    path: ../..
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    GENERATE_INFOPLIST_FILE: YES
+    PRODUCT_BUNDLE_IDENTIFIER: dev.manman.SwiftyChain.KeychainHost
+targets:
+  # iOS simulators accept ad-hoc signing, which still embeds the app's keychain entitlements.
+  KeychainHost-iOS:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: SwiftyChain
+        product: SwiftyChain
+    settings:
+      base:
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+  KeychainHostTests-iOS:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ../SwiftyChainTests/DataProtectionIntegrationTests.swift
+    dependencies:
+      - target: KeychainHost-iOS
+      - package: SwiftyChain
+        product: SwiftyChain
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.manman.SwiftyChain.KeychainHostTests
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/KeychainHost-iOS.app/KeychainHost-iOS"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  # The macOS data-protection store needs a development-signed app with a
+  # keychain-access-groups entitlement, so these targets need DEVELOPMENT_TEAM.
+  KeychainHost-macOS:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: SwiftyChain
+        product: SwiftyChain
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: KeychainHost-macOS.entitlements
+  KeychainHostTests-macOS:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ../SwiftyChainTests/DataProtectionIntegrationTests.swift
+    dependencies:
+      - target: KeychainHost-macOS
+      - package: SwiftyChain
+        product: SwiftyChain
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.manman.SwiftyChain.KeychainHostTests
+        CODE_SIGN_STYLE: Automatic
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/KeychainHost-macOS.app/Contents/MacOS/KeychainHost-macOS"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  KeychainHost-iOS:
+    build:
+      targets:
+        KeychainHost-iOS: all
+    test:
+      targets: [KeychainHostTests-iOS]
+      environmentVariables:
+        SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION: "1"
+  KeychainHost-macOS:
+    build:
+      targets:
+        KeychainHost-macOS: all
+    test:
+      targets: [KeychainHostTests-macOS]
+      environmentVariables:
+        SWIFTYCHAIN_RUN_DATA_PROTECTION_INTEGRATION: "1"

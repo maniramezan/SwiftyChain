@@ -37,9 +37,19 @@ swift test --enable-code-coverage
 # With optional traits:
 swift test --traits "observation,cryptography"
 
-# Integration tests against the real keychain (macOS only):
+# Integration tests against the real keychain (macOS legacy store):
 SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1 swift test --filter SwiftyChainTests
+
+# Data-protection keychain tests inside a host app (needs XcodeGen):
+scripts/run-keychain-host-tests.sh ios
+DEVELOPMENT_TEAM=<your team ID> scripts/run-keychain-host-tests.sh macos
 ```
+
+SwiftPM test bundles have no entitlements, so the data-protection keychain rejects them.
+`scripts/run-keychain-host-tests.sh` runs `DataProtectionIntegrationTests` inside the host
+apps in `Tests/KeychainHost`: ad-hoc signed on two iOS simulators (as CI does), or
+development-signed on macOS. The macOS run needs an Apple Development identity on a team
+that can register this Mac; a free Personal Team works.
 
 ### Coverage Targets
 
