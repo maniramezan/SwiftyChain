@@ -39,6 +39,12 @@
         ///   access group exists.
         func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws
 
+        /// Updates an existing key in place. Fails without deleting the original key.
+        ///
+        /// - Throws: ``KeychainError/itemNotFound`` when no key matches. A platform may
+        ///   reject updates to non-exportable keys or changes to the key's algorithm.
+        func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws
+
         /// Returns the matching key.
         ///
         /// - Throws: ``KeychainError/itemNotFound`` when no key matches.

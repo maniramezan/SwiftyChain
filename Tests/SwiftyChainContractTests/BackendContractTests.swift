@@ -344,17 +344,21 @@ struct BackendContractTests {
 
     @Test(arguments: BackendFixture.available)
     func internetPasswordBulkDeletesHonorSynchronizableFilters(_ fixture: BackendFixture) async throws {
-        let keychain = Keychain(backend: fixture.make())
+        let backend = fixture.make()
+        let keychain = Keychain(backend: backend)
         let key = InternetPasswordKey(server: "\(UUID().uuidString.lowercased()).example.com", account: "alice")
 
         try await withCleanup(keychain, internetPasswords: [key]) {
             try await keychain.saveInternetPassword("local", for: key)
 
-            if fixture.canWriteSynchronizableItems {
-                try await keychain.deleteAllItems(
-                    matching: KeychainDeleteQuery(
-                        service: key.server, onlySynchronizable: true, itemClass: .internetPassword)
-                )
+            if backend.capabilities.contains(.synchronizable) {
+                do {
+                    try await keychain.deleteAllItems(
+                        matching: KeychainDeleteQuery(
+                            service: key.server, onlySynchronizable: true, itemClass: .internetPassword))
+                } catch KeychainError.accessGroupDenied where !fixture.canWriteSynchronizableItems {
+                    #expect(fixture.isIsolated == false)
+                }
                 #expect(try await keychain.loadInternetPassword(for: key) == "local")
             }
 
@@ -721,5 +725,32 @@ struct AccessControlContractTests {
             try await keychain.save("secret", for: key)
         }
         #expect(try await keychain.exists(key: key) == false)
+    }
+}
+
+struct InternetSynchronizableContractTests {
+    @Test(arguments: BackendFixture.available)
+    func bulkDeletesDistinguishLocalAndSynchronizedPasswords(_ fixture: BackendFixture) async throws {
+        guard fixture.canWriteSynchronizableItems else { return }
+        let keychain = Keychain(backend: fixture.make())
+        let server = "tests.sync.\(UUID().uuidString).example.com"
+        let local = InternetPasswordKey(server: server, account: "alice")
+        let synced = InternetPasswordKey(server: server, account: "alice", isSynchronizable: true)
+        try await keychain.saveInternetPassword("local", for: local)
+        try await keychain.saveInternetPassword("synced", for: synced)
+        try await keychain.deleteAllItems(
+            matching: .init(service: server, includeSynchronizable: false, itemClass: .internetPassword))
+        await #expect(throws: KeychainError.itemNotFound) { try await keychain.loadInternetPassword(for: local) }
+        #expect(try await keychain.loadInternetPassword(for: synced) == "synced")
+        try await keychain.saveInternetPassword("local", for: local)
+        try await keychain.deleteAllItems(
+            matching: .init(service: server, onlySynchronizable: true, itemClass: .internetPassword))
+        #expect(try await keychain.loadInternetPassword(for: local) == "local")
+        await #expect(throws: KeychainError.itemNotFound) { try await keychain.loadInternetPassword(for: synced) }
+        try await keychain.saveInternetPassword("synced", for: synced)
+        try await keychain.deleteAllItems(
+            matching: .init(service: server, includeSynchronizable: true, itemClass: .internetPassword))
+        await #expect(throws: KeychainError.itemNotFound) { try await keychain.loadInternetPassword(for: local) }
+        await #expect(throws: KeychainError.itemNotFound) { try await keychain.loadInternetPassword(for: synced) }
     }
 }

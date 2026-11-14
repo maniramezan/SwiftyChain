@@ -364,6 +364,7 @@ package struct KeychainEngine: Sendable {
             itemClass: .internetPassword,
             account: key.account,
             accessGroup: key.accessGroup,
+            isSynchronizable: key.isSynchronizable,
             server: key.server,
             port: key.port,
             path: key.path,

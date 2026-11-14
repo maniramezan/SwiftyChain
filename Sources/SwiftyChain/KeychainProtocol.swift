@@ -145,6 +145,9 @@ extension KeychainProtocol {
         /// - Throws: ``KeychainError/duplicateItem`` if a key matching `keyRef` exists.
         func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws
 
+        /// Adds or updates a cryptographic key without deleting it first.
+        func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws
+
         /// Loads a cryptographic key from the keychain.
         ///
         /// - Throws: ``KeychainError/itemNotFound`` if no key matching `keyRef` exists.

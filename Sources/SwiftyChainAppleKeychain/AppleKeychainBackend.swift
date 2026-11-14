@@ -108,7 +108,11 @@
 
         package func delete(matching query: KeychainQuery) throws {
             logSecurityCall("SecItemDelete", query: query)
-            try deleteEveryMatch(matchQuery(from: query))
+            do {
+                try deleteEveryMatch(matchQuery(from: query))
+            } catch KeychainError.operationFailed(errSecParam) where query.itemClass == .internetPassword {
+                throw KeychainError.invalidArgument("The keychain rejected the internet-password deletion filters")
+            }
         }
 
         // The macOS legacy keychain removes one matching item per SecItemDelete
@@ -397,6 +401,25 @@
                 ) { _, new in new }
                 let status = SecItemAdd(attributes as CFDictionary, nil)
                 try mapStatus(status)
+            }
+
+            package func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
+                #if os(macOS)
+                    guard configuration.macOSStore == .dataProtection else {
+                        throw KeychainError.invalidArgument(
+                            "The macOS legacy store cannot replace cryptographic key material in place; use the data-protection store"
+                        )
+                    }
+                #endif
+                var error: Unmanaged<CFError>?
+                guard let data = SecKeyCopyExternalRepresentation(key, &error) else {
+                    if let error { _ = error.takeRetainedValue() }
+                    throw KeychainError.invalidArgument("Updating a cryptographic key requires exportable key material")
+                }
+                var changes = try protectionAttributes(
+                    accessibility: attributes.accessibility, accessControl: attributes.accessControl)
+                changes[kSecValueData as String] = data
+                try mapStatus(SecItemUpdate(cryptoSecQuery(from: query) as CFDictionary, changes as CFDictionary))
             }
 
             package func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
