@@ -57,7 +57,7 @@ public actor Keychain: KeychainProtocol {
 
     /// Creates a new ``Keychain`` instance backed by the platform keychain.
     public init() {
-        self.init(backend: PlatformDefaultBackend.make())
+        self.engine = .platformDefault()
     }
 
     /// Creates a ``Keychain`` that stores items in a custom ``KeychainBackend``.
@@ -316,8 +316,8 @@ public actor Keychain: KeychainProtocol {
         /// bulk-delete performed through this actor for the specified service.
         /// The stream terminates when the caller's task is cancelled.
         ///
-        /// > Note: Changes made through ``KeychainStorage`` or a different ``Keychain`` actor
-        /// > instance are not reflected in this stream.
+        /// Platform-backed instances and ``KeychainStorage`` share observers. Custom
+        /// backends have a separate registry per engine, even when the backend is shared.
         ///
         /// - Parameters:
         ///   - service: The service name to observe.
@@ -343,6 +343,13 @@ public actor Keychain: KeychainProtocol {
             accessGroup: String? = nil
         ) -> AsyncStream<KeychainChangeEvent> {
             engine.observeKeychainChanges(service: service, accessGroup: accessGroup)
+        }
+
+        /// Observes internet-password changes for a server.
+        public func observeKeychainChanges(server: String, accessGroup: String? = nil) -> AsyncStream<
+            KeychainChangeEvent
+        > {
+            engine.observeKeychainChanges(server: server, accessGroup: accessGroup)
         }
     #endif
 }

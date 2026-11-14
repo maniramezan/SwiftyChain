@@ -14,7 +14,9 @@
     /// ```
     public struct KeychainChangeEvent: Sendable, Hashable {
         /// The service identifier associated with the changed item.
-        public let service: String
+        public let service: String?
+        /// The server of a changed internet password, or `nil` for generic passwords.
+        public let server: String?
         /// The account identifier of the changed item, or `nil` for bulk operations.
         public let account: String?
         /// The kind of change that occurred.
@@ -38,8 +40,9 @@
         ///   - service: The service identifier.
         ///   - account: The account identifier, or `nil` for bulk operations.
         ///   - kind: The kind of change.
-        public init(service: String, account: String? = nil, kind: Kind) {
+        public init(service: String? = nil, server: String? = nil, account: String? = nil, kind: Kind) {
             self.service = service
+            self.server = server
             self.account = account
             self.kind = kind
         }
