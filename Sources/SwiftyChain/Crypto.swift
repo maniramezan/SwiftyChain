@@ -45,19 +45,19 @@
         public let tag: String
         /// The access group for sharing across apps, or `nil` for the default group.
         public let accessGroup: String?
-        /// The accessibility policy for this item.
-        public let accessibility: KeychainAccessibility
+        /// The accessibility policy for this item, or `nil` for the platform default.
+        public let accessibility: KeychainAccessibility?
 
         /// Creates a cryptographic key reference.
         ///
         /// - Parameters:
         ///   - tag: The private application tag (e.g., `"com.example.app.key-name"`).
         ///   - accessGroup: The keychain access group. Defaults to `nil`.
-        ///   - accessibility: The accessibility policy. Defaults to ``KeychainAccessibility/whenUnlocked``.
+        ///   - accessibility: The accessibility policy. Defaults to `nil`, the platform default.
         public init(
             tag: String,
             accessGroup: String? = nil,
-            accessibility: KeychainAccessibility = .whenUnlocked
+            accessibility: KeychainAccessibility? = nil
         ) {
             self.tag = tag
             self.accessGroup = accessGroup

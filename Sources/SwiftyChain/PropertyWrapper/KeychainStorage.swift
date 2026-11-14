@@ -37,14 +37,15 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     ///   - account: The account identifier for this keychain item.
     ///   - service: The service name that groups related items (e.g., your app's bundle ID).
     ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
-    ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
+    ///   - accessibility: Controls when the item is accessible. Defaults to `nil`, which uses
+    ///     the platform default for a new item and keeps an existing item's policy.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
     ///     Apple platforms only; on Linux, `true` makes operations throw ``KeychainError/platformUnsupported(_:)``.
     public init(
         _ account: String,
         service: String,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility = .whenUnlocked,
+        accessibility: KeychainAccessibility? = nil,
         isSynchronizable: Bool = false
     ) {
         self.init(
@@ -65,14 +66,14 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     ///   - backend: The storage that receives every read and write, such as
     ///     `InMemoryKeychainBackend` in tests.
     ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
-    ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
+    ///   - accessibility: Controls when the item is accessible. Defaults to `nil`, the platform default.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
     public init(
         _ account: String,
         service: String,
         backend: any KeychainBackend,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility = .whenUnlocked,
+        accessibility: KeychainAccessibility? = nil,
         isSynchronizable: Bool = false
     ) {
         self.key = KeychainKey(

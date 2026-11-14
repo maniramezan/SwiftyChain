@@ -85,7 +85,7 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
             arguments?.expressionText(named: "accessGroup", default: defaultAccessGroup)
             ?? defaultAccessGroup
         let accessibility =
-            arguments?.expressionText(named: "accessibility", default: ".whenUnlocked") ?? ".whenUnlocked"
+            arguments?.expressionText(named: "accessibility", default: "nil") ?? "nil"
         let isSynchronizable = arguments?.expressionText(named: "isSynchronizable", default: "false") ?? "false"
         let label = arguments?.expressionText(named: "label", default: "nil") ?? "nil"
         let comment = arguments?.expressionText(named: "comment", default: "nil") ?? "nil"

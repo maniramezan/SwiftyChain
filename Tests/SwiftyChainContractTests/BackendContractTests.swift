@@ -649,3 +649,43 @@ struct UnsupportedPlatformBackendTests {
         await #expect(throws: unsupported) { try await keychain.allAccounts(service: "tests.unsupported") }
     }
 }
+
+struct KeyIdentityTests {
+    @Test
+    func genericIdentityExcludesWritePolicy() {
+        let plain = KeychainKey<String>(service: "tests.identity", account: "token")
+        let policy = KeychainKey<String>(
+            service: plain.service, account: plain.account,
+            accessibility: .afterFirstUnlock, label: "Token", comment: "Authentication")
+        #expect(plain == policy)
+        #expect(Set([plain, policy]).count == 1)
+        #expect(plain.accessibility == nil)
+        #expect(plain != KeychainKey(service: plain.service, account: plain.account, isSynchronizable: true))
+    }
+
+    @Test
+    func internetIdentityExcludesWritePolicy() {
+        let plain = InternetPasswordKey(server: "identity.example.com", account: "alice")
+        let policy = InternetPasswordKey(server: plain.server, account: plain.account, accessibility: .afterFirstUnlock)
+        #expect(plain == policy)
+        #expect(Set([plain, policy]).count == 1)
+        #expect(plain.accessibility == nil)
+    }
+
+    @Test(arguments: BackendFixture.available)
+    func defaultKeyUpdatesAnItemWithExplicitPolicy(_ fixture: BackendFixture) async throws {
+        let keychain = Keychain(backend: fixture.make())
+        let service = "tests.identity.\(UUID().uuidString)"
+        let policy = KeychainKey<String>(service: service, account: "token", accessibility: .afterFirstUnlock)
+        let plain = KeychainKey<String>(service: service, account: "token")
+        do {
+            try await keychain.save("first", for: policy)
+            try await keychain.update("second", for: plain)
+            #expect(try await keychain.load(key: policy) == "second")
+            try await keychain.delete(key: plain)
+        } catch {
+            try? await keychain.delete(key: plain)
+            throw error
+        }
+    }
+}

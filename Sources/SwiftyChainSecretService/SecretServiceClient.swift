@@ -69,7 +69,7 @@
         /// one deadline.
         ///
         /// - Throws: ``KeychainError/itemNotFound`` when nothing matches, and
-        ///   ``KeychainError/userPresenceRequired`` when a match stays locked.
+        ///   ``KeychainError/interactionNotAllowed`` when a match stays locked.
         package func replace(_ matching: SecretServiceItemQuery, label: String?, data: Data?) throws {
             try Self.validate(matching, label: label)
             try perform("replace", schema: matching.schema) { cancellable, _ in
@@ -99,7 +99,7 @@
                             guard let secret = item.secret else {
                                 SwiftyChainLoggers.backend.debug(
                                     "Secret Service update found a match that stays locked")
-                                throw KeychainError.userPresenceRequired
+                                throw KeychainError.interactionNotAllowed
                             }
                             originals.append(StoredItem(handle: handle, item: item, secret: secret))
                         }
@@ -140,7 +140,7 @@
                     guard let value else {
                         if try hasMatchingItems(query, attributes: attributes, unlock: false, cancellable: cancellable)
                         {
-                            throw KeychainError.userPresenceRequired
+                            throw KeychainError.interactionNotAllowed
                         }
                         return nil
                     }
@@ -197,7 +197,7 @@
                         }
                     }
                     if try hasMatchingItems(query, attributes: attributes, unlock: false, cancellable: cancellable) {
-                        throw KeychainError.userPresenceRequired
+                        throw KeychainError.interactionNotAllowed
                     }
                     return removed
                 }

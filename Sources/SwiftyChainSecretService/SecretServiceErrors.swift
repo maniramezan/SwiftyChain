@@ -80,7 +80,7 @@ package enum SecretServiceErrors {
     /// item or a dismissed prompt, leave the connection healthy.
     package static func shouldResetConnection(after error: KeychainError) -> Bool {
         switch error {
-        case .itemNotFound, .duplicateItem, .userPresenceRequired, .authenticationFailed:
+        case .itemNotFound, .duplicateItem, .interactionNotAllowed, .authenticationFailed, .userCanceled:
             false
         default:
             true
@@ -120,12 +120,15 @@ package enum SecretServiceErrors {
         }
         switch (failure.domain, failure.code) {
         case (secretDomain, secretIsLocked):
-            return .userPresenceRequired
+            return .interactionNotAllowed
         case (secretDomain, secretNoSuchObject):
             return .itemNotFound
         case (secretDomain, secretAlreadyExists):
             return .duplicateItem
-        case (ioDomain, ioCancelled), (dbusDomain, dbusAccessDenied):
+        case (ioDomain, ioCancelled):
+            // SwiftyChain's own timer didn't fire, so the user dismissed a prompt.
+            return .userCanceled
+        case (dbusDomain, dbusAccessDenied):
             return .authenticationFailed
         case (ioDomain, ioTimedOut), (dbusDomain, dbusNoReply), (dbusDomain, dbusTimeout), (dbusDomain, dbusTimedOut):
             return .timedOut
