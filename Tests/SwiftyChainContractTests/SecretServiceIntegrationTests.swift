@@ -45,7 +45,7 @@
             try await keychain.save("kept", for: kept)
             defer { Self.cleanUp(service: service) }
             let unscoped = KeychainError.platformUnsupported(
-                "Deleting without a service, server, or access group is not supported by the Secret Service backend"
+                "Deleting without a service, server, or access group is not supported by this keychain backend"
             )
 
             await #expect(throws: unscoped) {

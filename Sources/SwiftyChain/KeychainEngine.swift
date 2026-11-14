@@ -29,7 +29,7 @@ package struct KeychainEngine: Sendable {
     package func load<T: KeychainStorable>(key: KeychainKey<T>) throws -> T {
         logKeychainOperationStarted("load", service: key.service, account: key.account)
         do {
-            let data = try backend.data(matching: validated(identityQuery(for: key)))
+            let data = try backend.data(matching: validated(identityQuery(for: key), for: .read))
             return try T.fromKeychainData(data)
         } catch KeychainError.itemNotFound {
             SwiftyChainLoggers.keychain.debug(
@@ -57,7 +57,7 @@ package struct KeychainEngine: Sendable {
         logKeychainOperationStarted("update", service: key.service, account: key.account)
         do {
             try backend.update(
-                matching: validated(identityQuery(for: key)),
+                matching: validated(identityQuery(for: key), for: .update),
                 to: writeAttributes(value, for: key)
             )
             notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .updated)
@@ -88,7 +88,7 @@ package struct KeychainEngine: Sendable {
     package func delete<T: KeychainStorable>(key: KeychainKey<T>) throws {
         logKeychainOperationStarted("delete", service: key.service, account: key.account)
         do {
-            try backend.delete(matching: validated(identityQuery(for: key)))
+            try backend.delete(matching: validated(identityQuery(for: key), for: .delete))
             notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("delete", service: key.service, account: key.account)
         } catch {
@@ -122,7 +122,7 @@ package struct KeychainEngine: Sendable {
                     accessGroup: query.accessGroup,
                     isSynchronizable: isSynchronizable
                 )
-            try backend.delete(matching: validated(keychainQuery))
+            try backend.delete(matching: validated(keychainQuery, for: .delete))
             if let service = query.service {
                 notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
             }
@@ -135,7 +135,7 @@ package struct KeychainEngine: Sendable {
 
     package func exists<T: KeychainStorable>(key: KeychainKey<T>) throws -> Bool {
         do {
-            let exists = try backend.contains(matching: validated(identityQuery(for: key)))
+            let exists = try backend.contains(matching: validated(identityQuery(for: key), for: .read))
             if !exists {
                 SwiftyChainLoggers.keychain.debug(
                     "exists returned false for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
@@ -155,7 +155,8 @@ package struct KeychainEngine: Sendable {
         do {
             let accounts = try backend.accounts(
                 matching: validated(
-                    KeychainQuery(itemClass: .genericPassword, service: service, accessGroup: accessGroup)
+                    KeychainQuery(itemClass: .genericPassword, service: service, accessGroup: accessGroup),
+                    for: .read
                 )
             )
             SwiftyChainLoggers.keychain.debug(
@@ -172,7 +173,7 @@ package struct KeychainEngine: Sendable {
         logKeychainOperationStarted("saveInternetPassword", service: key.server, account: key.account)
         do {
             try backend.add(
-                validated(internetIdentityQuery(for: key)),
+                validated(internetIdentityQuery(for: key), for: .add),
                 attributes: KeychainAttributes(data: password.keychainData(), accessibility: key.accessibility)
             )
             notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
@@ -186,7 +187,7 @@ package struct KeychainEngine: Sendable {
     package func loadInternetPassword(for key: InternetPasswordKey) throws -> String {
         logKeychainOperationStarted("loadInternetPassword", service: key.server, account: key.account)
         do {
-            let data = try backend.data(matching: validated(internetIdentityQuery(for: key)))
+            let data = try backend.data(matching: validated(internetIdentityQuery(for: key), for: .read))
             return try String.fromKeychainData(data)
         } catch KeychainError.itemNotFound {
             SwiftyChainLoggers.keychain.debug(
@@ -202,7 +203,7 @@ package struct KeychainEngine: Sendable {
     package func deleteInternetPassword(for key: InternetPasswordKey) throws {
         logKeychainOperationStarted("deleteInternetPassword", service: key.server, account: key.account)
         do {
-            try backend.delete(matching: validated(internetIdentityQuery(for: key)))
+            try backend.delete(matching: validated(internetIdentityQuery(for: key), for: .delete))
             notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("deleteInternetPassword", service: key.server, account: key.account)
         } catch {
@@ -239,12 +240,12 @@ package struct KeychainEngine: Sendable {
     // Shared by save and upsert. Logging is left to the caller so an upsert
     // that hits an existing item does not report a failed save.
     private func add<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        try backend.add(validated(identityQuery(for: key)), attributes: writeAttributes(value, for: key))
+        try backend.add(validated(identityQuery(for: key), for: .add), attributes: writeAttributes(value, for: key))
         notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
     }
 
-    private func validated(_ query: KeychainQuery) throws -> KeychainQuery {
-        try KeychainQueryValidator.validate(query, against: backend.capabilities)
+    private func validated(_ query: KeychainQuery, for operation: KeychainOperation) throws -> KeychainQuery {
+        try KeychainQueryValidator.validate(query, for: operation, against: backend.capabilities)
         return query
     }
 

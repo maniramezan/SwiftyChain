@@ -68,6 +68,15 @@ public struct KeychainBackendCapabilities: OptionSet, Sendable, Hashable {
     public static let internetPasswords = KeychainBackendCapabilities(rawValue: 1 << 2)
     /// The backend stores cryptographic keys, through `KeychainCryptoBackend`.
     public static let cryptoKeys = KeychainBackendCapabilities(rawValue: 1 << 3)
+    /// Bulk deletes may omit the service, server, and access group.
+    ///
+    /// Apple's keychain scopes every query to the calling app, so an unscoped delete only
+    /// removes that app's items. The Secret Service has no such sandbox: every app built
+    /// on SwiftyChain shares its schemas, so an unscoped delete there would remove other
+    /// apps' items.
+    public static let unscopedBulkDelete = KeychainBackendCapabilities(rawValue: 1 << 4)
+    /// Items can require user presence, biometry, or the device passcode before they are read.
+    public static let accessControl = KeychainBackendCapabilities(rawValue: 1 << 5)
 
     /// Every capability.
     public static let all: KeychainBackendCapabilities = [
@@ -75,5 +84,7 @@ public struct KeychainBackendCapabilities: OptionSet, Sendable, Hashable {
         .accessGroups,
         .internetPasswords,
         .cryptoKeys,
+        .unscopedBulkDelete,
+        .accessControl,
     ]
 }
