@@ -21,7 +21,7 @@ func keychainKeyMacroExpands() {
                 service: "app",
                 account: "token",
                 accessGroup: nil,
-                accessibility: .whenUnlocked,
+                accessibility: nil,
                 isSynchronizable: false,
                 label: nil,
                 comment: nil
@@ -86,7 +86,7 @@ func keychainItemMacroExpandsOptionalProperty() {
                         service: "app",
                         account: "token",
                         accessGroup: nil,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -128,7 +128,7 @@ func keychainItemMacroExpandsRequiredProperty() {
                         service: "app",
                         account: "device",
                         accessGroup: nil,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -198,7 +198,7 @@ func keychainScopeMacroUsesCustomKeychain() {
                         service: Self._keychainScopeService,
                         account: "token",
                         accessGroup: Self._keychainScopeAccessGroup,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -255,7 +255,7 @@ func keychainItemMacroDiagnosesEmptyService() {
                         service: "",
                         account: "token",
                         accessGroup: nil,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -305,7 +305,7 @@ func keychainItemMacroInheritsScopedServiceAndAccessGroup() {
                         service: Self._keychainScopeService,
                         account: "token",
                         accessGroup: Self._keychainScopeAccessGroup,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -362,7 +362,7 @@ func keychainItemMacroDiagnosesMissingServiceOutsideScope() {
                         service: "",
                         account: "token",
                         accessGroup: nil,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -434,7 +434,7 @@ func keychainItemMacroDiagnosesEmptyAccount() {
                         service: "app",
                         account: "",
                         accessGroup: nil,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: false,
                         label: nil,
                         comment: nil
@@ -514,7 +514,7 @@ func keychainItemMacroExpandsScopedClassProperty() {
                         service: Self._keychainScopeService,
                         account: "token",
                         accessGroup: Self._keychainScopeAccessGroup,
-                        accessibility: .whenUnlocked,
+                        accessibility: nil,
                         isSynchronizable: true,
                         label: "Auth token",
                         comment: "Stored token"
@@ -564,7 +564,7 @@ func keychainKeyMacroDiagnosesNonLiteralServiceAndAccount() {
                 service: service,
                 account: account,
                 accessGroup: nil,
-                accessibility: .whenUnlocked,
+                accessibility: nil,
                 isSynchronizable: false,
                 label: nil,
                 comment: nil
@@ -599,7 +599,7 @@ func keychainKeyMacroDiagnosesInvalidAccessGroupLiteral() {
                 service: "app",
                 account: "token",
                 accessGroup: group,
-                accessibility: .whenUnlocked,
+                accessibility: nil,
                 isSynchronizable: false,
                 label: nil,
                 comment: nil
@@ -627,7 +627,7 @@ func keychainKeyMacroDiagnosesEmptyAccessGroupLiteral() {
                 service: "app",
                 account: "token",
                 accessGroup: "",
-                accessibility: .whenUnlocked,
+                accessibility: nil,
                 isSynchronizable: false,
                 label: nil,
                 comment: nil

@@ -70,6 +70,21 @@
         #expect(changes[kSecValueData as String] as? Data == Data("new".utf8))
     }
 
+    @Test(
+        arguments: [
+            (errSecItemNotFound, KeychainError.itemNotFound),
+            (errSecDuplicateItem, .duplicateItem),
+            (errSecAuthFailed, .authenticationFailed),
+            (errSecUserCanceled, .userCanceled),
+            (errSecInteractionNotAllowed, .interactionNotAllowed),
+            (errSecMissingEntitlement, .accessGroupDenied),
+            (errSecParam, .operationFailed(errSecParam)),
+        ]
+    )
+    func statusesMapToKeychainErrors(_ status: OSStatus, _ expected: KeychainError) {
+        #expect(throws: expected) { try AppleKeychainBackend().mapStatus(status) }
+    }
+
     @Test
     func keychainAccessibilitySecValuesAreDistinctForRepresentativeCases() {
         #expect(KeychainAccessibility.afterFirstUnlock.secValue as String != "")

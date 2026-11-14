@@ -211,7 +211,7 @@
             )
         }
 
-        private func mapStatus(_ status: OSStatus) throws {
+        package func mapStatus(_ status: OSStatus) throws {
             switch status {
             case errSecSuccess:
                 return
@@ -221,12 +221,15 @@
             case errSecDuplicateItem:
                 SwiftyChainLoggers.backend.debug("Security operation returned duplicate item")
                 throw KeychainError.duplicateItem
-            case errSecAuthFailed, errSecUserCanceled:
+            case errSecAuthFailed:
                 SwiftyChainLoggers.backend.debug("Security operation returned authentication failure")
                 throw KeychainError.authenticationFailed
+            case errSecUserCanceled:
+                SwiftyChainLoggers.backend.debug("Security operation was canceled by the user")
+                throw KeychainError.userCanceled
             case errSecInteractionNotAllowed:
-                SwiftyChainLoggers.backend.debug("Security operation requires user presence")
-                throw KeychainError.userPresenceRequired
+                SwiftyChainLoggers.backend.debug("Security operation needs interaction that isn't allowed")
+                throw KeychainError.interactionNotAllowed
             case errSecMissingEntitlement:
                 SwiftyChainLoggers.backend.debug("Security operation missing entitlement")
                 throw KeychainError.accessGroupDenied
