@@ -13,7 +13,7 @@
         }
 
         func storeAndLock() throws {
-            try backend.add(query, data: Data("secret".utf8))
+            try backend.add(query, attributes: KeychainAttributes(data: Data("secret".utf8)))
             let collection = try collectionPath()
             _ = try dbusCall(
                 path: "/org/freedesktop/secrets",

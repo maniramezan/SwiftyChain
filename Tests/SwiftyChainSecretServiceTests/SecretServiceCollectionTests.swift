@@ -17,6 +17,14 @@
     )
     struct SecretServiceCollectionTests {
         @Test
+        func aRunningProviderAnswersLivenessPings() throws {
+            // Any call loads libsecret, which the ping needs.
+            _ = try SecretServiceBackend().contains(
+                matching: KeychainQuery(itemClass: .genericPassword, service: "tests.liveness.\(UUID().uuidString)"))
+            #expect(SecretServiceClient.providerResponds(within: .seconds(1)))
+        }
+
+        @Test
         func updatesChangeTheItemInItsOwnCollection() throws {
             let backend = SecretServiceBackend()
             let service = "tests.collection.\(UUID().uuidString)"

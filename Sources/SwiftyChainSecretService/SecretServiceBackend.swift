@@ -20,8 +20,12 @@
 
         private let client: SecretServiceClient
 
-        package init(timeout: Duration = .seconds(30)) {
-            self.client = SecretServiceClient(timeout: timeout)
+        /// - Parameters:
+        ///   - timeout: The longest a call may take, including waiting for earlier calls.
+        ///   - livenessInterval: How often a running or waiting call checks that the
+        ///     provider still answers, so a hung provider fails calls early.
+        package init(timeout: Duration = .seconds(30), livenessInterval: Duration = .seconds(2)) {
+            self.client = SecretServiceClient(timeout: timeout, livenessInterval: livenessInterval)
         }
 
         package func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {

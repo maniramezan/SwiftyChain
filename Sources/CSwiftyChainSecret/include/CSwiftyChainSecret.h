@@ -44,6 +44,15 @@ int swiftychain_secret_session_bus_available(
 );
 
 /*
+ * Pings the Secret Service with org.freedesktop.DBus.Peer.Ping, waiting at most
+ * timeout_ms. Returns 1 when the provider replied. Otherwise returns 0 and sets error,
+ * so the caller can tell a timeout (a hung provider) from an error reply or a missing
+ * provider. Returns 1 with no error when there is no session bus, which the next real
+ * call reports instead.
+ */
+int swiftychain_secret_service_ping(int timeout_ms, swiftychain_secret_error **error);
+
+/*
  * Drops libsecret's cached Secret Service proxy and session, so the next call
  * reconnects. Used after a failure that may mean the keyring daemon or the bus
  * restarted.
@@ -125,6 +134,13 @@ int swiftychain_secret_item_set_label(
     swiftychain_secret_cancellable *cancellable,
     swiftychain_secret_error **error
 );
+int swiftychain_secret_item_delete(
+    swiftychain_secret_item *item,
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+);
+/* Whether a Secret Service item is locked, from the state its search loaded. Makes no D-Bus call. */
+int swiftychain_secret_item_is_locked(swiftychain_secret_item *item);
 
 const void *swiftychain_secret_value_bytes(swiftychain_secret_value *value, size_t *length);
 void swiftychain_secret_value_free(swiftychain_secret_value *value);

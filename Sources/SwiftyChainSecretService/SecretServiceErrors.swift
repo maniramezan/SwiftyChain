@@ -71,6 +71,18 @@ package enum SecretServiceErrors {
         failure.domain == secretDomain && failure.code == secretNoSuchObject
     }
 
+    /// Whether a liveness ping failed because the provider didn't answer in time, which
+    /// means it is hung. Any other failure, such as an error reply or a missing provider,
+    /// shows the bus or provider responded, so the real call reports it instead.
+    package static func isUnresponsive(_ failure: SecretServiceFailure) -> Bool {
+        switch (failure.domain, failure.code) {
+        case (ioDomain, ioTimedOut), (dbusDomain, dbusNoReply), (dbusDomain, dbusTimeout), (dbusDomain, dbusTimedOut):
+            true
+        default:
+            false
+        }
+    }
+
     /// Whether, after this error, libsecret's cached Secret Service proxy and session
     /// should be dropped so the next call reconnects.
     ///

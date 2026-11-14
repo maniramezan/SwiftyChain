@@ -26,6 +26,22 @@ struct SecretServiceErrorsTests {
         #expect(SecretServiceErrors.keychainError(for: failure, timerFired: false) == expected)
     }
 
+    @Test(
+        arguments: [
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 24), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 4), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 12), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 20), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 2), false),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 3), false),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 19), false),
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 19), false),
+        ]
+    )
+    func onlyAPingTimeoutMeansTheProviderIsHung(_ failure: SecretServiceFailure, _ hung: Bool) {
+        #expect(SecretServiceErrors.isUnresponsive(failure) == hung)
+    }
+
     @Test
     func ourTimeoutWinsOverTheCancellationError() {
         let cancelled = SecretServiceFailure(domain: "g-io-error-quark", code: 19)

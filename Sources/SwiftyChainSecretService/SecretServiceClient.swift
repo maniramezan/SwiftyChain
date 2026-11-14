@@ -25,15 +25,46 @@
     /// an unanswered unlock prompt all fail within one timeout instead of one after
     /// another. Each call gets its own `GCancellable`, which a timer cancels at the
     /// deadline, so a hung keyring daemon can't block the caller forever.
+    ///
+    /// A hung provider is detected sooner than the timeout. Every `livenessInterval`,
+    /// a running call, and each call waiting behind it, pings the provider. A provider
+    /// that doesn't answer within `pingTimeout` is hung: the running call is cancelled,
+    /// the waiting calls fail, and later calls fail after a single ping until the
+    /// provider answers again. A provider busy with a legitimate wait, such as an
+    /// unlock prompt, still answers pings, so those calls keep their full timeout.
     package final class SecretServiceClient: Sendable {
         /// Shared by every client, so `Keychain.shared`, other `Keychain` instances, and
         /// `KeychainStorage` wrappers in one process never interleave their calls.
         private static let callGate = DispatchSemaphore(value: 1)
 
-        private let timeout: Duration
+        /// Set when a call finds the provider hung, so later calls check it with one
+        /// ping instead of each waiting out its timeout. Shared, like the provider.
+        private static let providerHung = Atomic(false)
 
-        package init(timeout: Duration) {
+        private let timeout: Duration
+        private let livenessInterval: Duration
+        private let pingTimeout: Duration
+
+        package init(
+            timeout: Duration, livenessInterval: Duration = .seconds(2), pingTimeout: Duration = .seconds(1)
+        ) {
             self.timeout = timeout
+            self.livenessInterval = livenessInterval
+            self.pingTimeout = pingTimeout
+        }
+
+        /// Whether the provider answers a ping within `timeout`. A missing bus or provider
+        /// counts as responsive, because the real call reports those more precisely.
+        ///
+        /// Call only after libsecret is loaded.
+        package static func providerResponds(within timeout: Duration) -> Bool {
+            var error: OpaquePointer?
+            let replied = swiftychain_secret_service_ping(SecretServiceDeadline.milliseconds(in: timeout), &error)
+            guard replied == 0, let error else { return true }
+            defer { swiftychain_secret_error_free(error) }
+            let domain = swiftychain_secret_error_domain(error).map { String(cString: $0) } ?? "unknown"
+            return !SecretServiceErrors.isUnresponsive(
+                SecretServiceFailure(domain: domain, code: swiftychain_secret_error_code(error)))
         }
 
         /// Stores a new item, failing with ``KeychainError/duplicateItem`` when one with
@@ -169,43 +200,60 @@
 
         /// Removes every matching item. Returns whether anything was removed.
         ///
-        /// Another process may delete a match between libsecret's search and its delete,
-        /// which libsecret reports as "no such object". That item is gone either way, so
-        /// the clear is retried for the remaining matches rather than reported as
-        /// ``KeychainError/itemNotFound``.
+        /// One search finds the matches and unlocks them where the user allows it; the
+        /// items are then deleted through the handles it returned, so no further search
+        /// runs. When a match stays locked, nothing is deleted and the call throws
+        /// ``KeychainError/interactionNotAllowed``. A match another process deletes after
+        /// the search is already gone, so it isn't an error.
         @discardableResult
         package func clear(_ query: SecretServiceItemQuery) throws -> Bool {
             try Self.validate(query, label: nil)
             return try perform("clear", schema: query.schema) { cancellable, _ in
                 try withAttributes(query.attributes) { attributes in
-                    var removed = false
-                    for _ in 0..<Self.clearAttempts {
-                        guard
-                            try hasMatchingItems(query, attributes: attributes, unlock: true, cancellable: cancellable)
-                        else {
-                            return removed
+                    try withSearchResults(
+                        query,
+                        attributes: attributes,
+                        unlock: true,
+                        loadSecrets: false,
+                        cancellable: cancellable
+                    ) { handles in
+                        guard !handles.isEmpty else { return false }
+                        let serviceItems = handles.filter { swiftychain_secret_item_is_service_item($0) != 0 }
+                        if serviceItems.contains(where: { swiftychain_secret_item_is_locked($0) != 0 }) {
+                            SwiftyChainLoggers.backend.debug("libsecret clear found matches that are still locked")
+                            throw KeychainError.interactionNotAllowed
                         }
-                        var error: OpaquePointer?
-                        let cleared = swiftychain_secret_clear(query.schema.kind, attributes, cancellable, &error)
-                        do {
+                        for handle in serviceItems {
+                            try deleteItem(handle, cancellable: cancellable)
+                        }
+                        if serviceItems.count < handles.count {
+                            // libsecret's file backend returns items that can't be deleted
+                            // through their handles. It has one collection, so clearing by
+                            // attributes removes exactly those items.
+                            var error: OpaquePointer?
+                            _ = swiftychain_secret_clear(query.schema.kind, attributes, cancellable, &error)
                             try throwIfFailed(error)
-                            removed = removed || cleared != 0
-                            break
-                        } catch let failure as SecretServiceFailure where SecretServiceErrors.isNoSuchObject(failure) {
-                            SwiftyChainLoggers.backend.debug("libsecret clear raced a concurrent delete; retrying")
-                            removed = true
                         }
+                        return true
                     }
-                    if try hasMatchingItems(query, attributes: attributes, unlock: false, cancellable: cancellable) {
-                        throw KeychainError.interactionNotAllowed
-                    }
-                    return removed
                 }
             }
         }
 
-        /// How many times ``clear(_:)`` retries after a match disappears mid-delete.
-        private static let clearAttempts = 3
+        private func deleteItem(_ handle: OpaquePointer, cancellable: OpaquePointer?) throws {
+            var error: OpaquePointer?
+            let deleted = swiftychain_secret_item_delete(handle, cancellable, &error)
+            do {
+                try throwIfFailed(error)
+            } catch let failure as SecretServiceFailure where SecretServiceErrors.isNoSuchObject(failure) {
+                SwiftyChainLoggers.backend.debug("libsecret delete found the item already removed by another process")
+                return
+            }
+            if deleted == 0 {
+                SwiftyChainLoggers.backend.error("libsecret delete reported failure without an error")
+                throw KeychainError.operationFailed(0)
+            }
+        }
 
         /// Rejects strings libsecret would silently truncate. Swift passes strings to C
         /// as `const char *`, so libsecret sees only the text before the first NUL, and
@@ -408,20 +456,21 @@
             // The deadline is fixed before waiting for the gate, so the timeout covers the
             // wait as well as the call.
             let deadline = SecretServiceDeadline.dispatchTime(after: timeout)
-            guard Self.callGate.wait(timeout: deadline) == .success else {
-                SwiftyChainLoggers.backend.debug(
-                    "libsecret \(operation, privacy: .public) timed out waiting for an earlier call for schema=\(schema.name, privacy: .public)"
-                )
-                throw KeychainError.timedOut
-            }
-            defer { Self.callGate.signal() }
 
             // The library must load before anything below it, because every GLib and
-            // libsecret call dereferences symbols resolved by dlopen. Then the timer is
-            // created, so every GLib call after it — including the D-Bus session handshake
-            // in `ensureSessionBus` — respects the deadline.
+            // libsecret call, including a liveness ping, dereferences symbols resolved by
+            // dlopen. Loading happens once per process.
             try ensureLibraryLoaded()
-            let timer = TimeoutTimer(deadline: deadline)
+            try failFastIfProviderStillHung(operation)
+            try waitForGate(until: deadline, operation: operation, schema: schema)
+            defer { Self.callGate.signal() }
+
+            // The timer is created after the gate, so every GLib call after it, including
+            // the D-Bus session handshake in `ensureSessionBus`, respects the deadline.
+            let pingTimeout = pingTimeout
+            let timer = TimeoutTimer(deadline: deadline, livenessInterval: livenessInterval) {
+                Self.providerResponds(within: pingTimeout)
+            }
             defer { timer.disarm() }
             do {
                 try ensureSessionBus(timer: timer)
@@ -451,6 +500,12 @@
                 return result
             } catch let failure as SecretServiceFailure {
                 let keychainError = SecretServiceErrors.keychainError(for: failure, timerFired: timer.fired)
+                if timer.foundProviderHung {
+                    SwiftyChainLoggers.backend.error(
+                        "libsecret \(operation, privacy: .public) cancelled because the Secret Service stopped responding"
+                    )
+                    Self.providerHung.store(true, ordering: .releasing)
+                }
                 if keychainError.isExpectedOutcome {
                     SwiftyChainLoggers.backend.debug(
                         "libsecret \(operation, privacy: .public) failed domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) error=\(keychainError.logName, privacy: .public)"
@@ -463,8 +518,50 @@
                 resetConnectionIfNeeded(after: keychainError)
                 throw keychainError
             } catch let keychainError as KeychainError {
+                if timer.foundProviderHung {
+                    Self.providerHung.store(true, ordering: .releasing)
+                }
                 resetConnectionIfNeeded(after: keychainError)
                 throw keychainError
+            }
+        }
+
+        /// Throws ``KeychainError/timedOut`` after one ping when an earlier call found the
+        /// provider hung and it still doesn't answer, instead of waiting out a timeout.
+        private func failFastIfProviderStillHung(_ operation: String) throws {
+            guard Self.providerHung.load(ordering: .acquiring) else { return }
+            guard Self.providerResponds(within: pingTimeout) else {
+                SwiftyChainLoggers.backend.debug(
+                    "libsecret \(operation, privacy: .public) failed fast: the Secret Service still doesn't respond"
+                )
+                throw KeychainError.timedOut
+            }
+            Self.providerHung.store(false, ordering: .releasing)
+            SwiftyChainLoggers.backend.info("The Secret Service is responding again")
+        }
+
+        /// Waits for the call gate until `deadline`, pinging the provider every
+        /// `livenessInterval` so a call queued behind a hung one fails as soon as the
+        /// hang is detected rather than at its own deadline.
+        private func waitForGate(until deadline: DispatchTime, operation: String, schema: SecretServiceSchema) throws {
+            while true {
+                let checkpoint = min(deadline, SecretServiceDeadline.dispatchTime(after: livenessInterval))
+                if Self.callGate.wait(timeout: checkpoint) == .success {
+                    return
+                }
+                if DispatchTime.now() >= deadline {
+                    SwiftyChainLoggers.backend.debug(
+                        "libsecret \(operation, privacy: .public) timed out waiting for an earlier call for schema=\(schema.name, privacy: .public)"
+                    )
+                    throw KeychainError.timedOut
+                }
+                if !Self.providerResponds(within: pingTimeout) {
+                    Self.providerHung.store(true, ordering: .releasing)
+                    SwiftyChainLoggers.backend.error(
+                        "libsecret \(operation, privacy: .public) gave up waiting: the Secret Service stopped responding"
+                    )
+                    throw KeychainError.timedOut
+                }
             }
         }
 
@@ -591,33 +688,51 @@
         let secret: Data
     }
 
-    /// Cancels a `GCancellable` at a deadline, unless disarmed first.
+    /// Cancels a `GCancellable` at a deadline, or earlier when a liveness check fails,
+    /// unless disarmed first.
     ///
-    /// Disarming cancels the dispatch timer, which releases its handler right away, so a
-    /// finished call doesn't keep its timer and `GCancellable` alive until the deadline.
+    /// Disarming cancels the dispatch timers, which releases their handlers right away, so
+    /// a finished call doesn't keep its timers and `GCancellable` alive until the deadline.
     private final class TimeoutTimer {
         private let state: TimeoutState
-        private let source: any DispatchSourceTimer
+        private let deadlineSource: any DispatchSourceTimer
+        private let livenessSource: any DispatchSourceTimer
 
         var cancellable: OpaquePointer? { state.cancellable }
         var fired: Bool { state.fired.load(ordering: .acquiring) }
+        /// Whether a liveness check, not the deadline, cancelled the call.
+        var foundProviderHung: Bool { state.foundProviderHung.load(ordering: .acquiring) }
 
-        init(deadline: DispatchTime) {
+        /// - Parameter isAlive: Runs every `livenessInterval` on a background queue while
+        ///   the call runs. Returning `false` cancels the call.
+        init(deadline: DispatchTime, livenessInterval: Duration, isAlive: @escaping @Sendable () -> Bool) {
             let state = TimeoutState()
             self.state = state
-            source = DispatchSource.makeTimerSource(queue: .global())
-            source.setEventHandler {
-                state.fired.store(true, ordering: .releasing)
-                if let cancellable = state.cancellable {
-                    swiftychain_secret_cancellable_cancel(cancellable)
-                }
+            deadlineSource = DispatchSource.makeTimerSource(queue: .global())
+            deadlineSource.setEventHandler {
+                state.cancel()
             }
-            source.schedule(deadline: deadline)
-            source.resume()
+            deadlineSource.schedule(deadline: deadline)
+
+            // A serial queue, so a slow ping never overlaps the next one.
+            livenessSource = DispatchSource.makeTimerSource(
+                queue: DispatchQueue(label: "dev.manman.SwiftyChain.SecretService.liveness"))
+            let interval = DispatchTimeInterval.nanoseconds(
+                SecretServiceDeadline.nanoseconds(in: livenessInterval) ?? Int.max)
+            livenessSource.setEventHandler {
+                guard !state.fired.load(ordering: .acquiring), !isAlive() else { return }
+                state.foundProviderHung.store(true, ordering: .releasing)
+                state.cancel()
+            }
+            livenessSource.schedule(deadline: .now() + interval, repeating: interval)
+
+            deadlineSource.resume()
+            livenessSource.resume()
         }
 
         func disarm() {
-            source.cancel()
+            deadlineSource.cancel()
+            livenessSource.cancel()
         }
     }
 
@@ -628,6 +743,14 @@
     private final class TimeoutState: @unchecked Sendable {
         let cancellable: OpaquePointer?
         let fired = Atomic(false)
+        let foundProviderHung = Atomic(false)
+
+        func cancel() {
+            fired.store(true, ordering: .releasing)
+            if let cancellable {
+                swiftychain_secret_cancellable_cancel(cancellable)
+            }
+        }
 
         init() {
             cancellable = swiftychain_secret_cancellable_new()

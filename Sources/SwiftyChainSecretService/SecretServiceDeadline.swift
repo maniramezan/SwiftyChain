@@ -13,6 +13,14 @@ package enum SecretServiceDeadline {
         return Int(exactly: total)
     }
 
+    /// The timeout in whole milliseconds for a GLib call, clamped to `1...Int32.max`.
+    /// GLib treats `0` and negative values as "use the default", so a tiny timeout
+    /// still gets one millisecond.
+    package static func milliseconds(in timeout: Duration) -> Int32 {
+        guard let nanoseconds = nanoseconds(in: timeout) else { return .max }
+        return Int32(clamping: max(1, nanoseconds / 1_000_000))
+    }
+
     package static func dispatchTime(after timeout: Duration) -> DispatchTime {
         guard let nanoseconds = nanoseconds(in: timeout) else {
             return .distantFuture
