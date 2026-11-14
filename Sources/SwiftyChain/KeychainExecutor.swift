@@ -1,20 +1,24 @@
 #if canImport(Dispatch)
     import Dispatch
 
-    /// The serial executor every ``Keychain`` actor uses when Dispatch is available.
+    /// The serial executor a ``Keychain`` actor uses when Dispatch is available.
     ///
     /// Security and libsecret calls block their thread while the platform keychain
     /// responds. A dedicated serial dispatch queue keeps these calls off Swift's
-    /// cooperative pool. All ``Keychain`` instances share this queue.
+    /// cooperative pool. Each ``Keychain`` has its own queue, so a call waiting on a
+    /// biometric prompt, or a slow custom backend, only holds up its own instance.
+    ///
+    /// On Linux, the Secret Service backend also serializes every libsecret call in the
+    /// process (see `SecretServiceClient`). A hung keyring daemon is found with a
+    /// liveness ping within a few seconds, after which calls fail fast with
+    /// ``KeychainError/timedOut`` until it answers again.
     package final class KeychainExecutor: SerialExecutor {
-        package static let shared = KeychainExecutor()
-
-        /// Set on the executor's queue, so tests can check where keychain work runs.
+        /// Set on every executor's queue, so tests can check where keychain work runs.
         package static let queueKey = DispatchSpecificKey<Bool>()
 
         private let queue: DispatchQueue
 
-        private init() {
+        package init() {
             queue = DispatchQueue(label: "dev.manman.SwiftyChain.Keychain", qos: .userInitiated)
             queue.setSpecific(key: Self.queueKey, value: true)
         }

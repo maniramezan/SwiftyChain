@@ -47,9 +47,12 @@ public actor Keychain: KeychainProtocol {
     package let engine: KeychainEngine
 
     #if canImport(Dispatch)
-        /// Keychain calls run on a dedicated serial queue because platform storage calls block.
+        private let executor = KeychainExecutor()
+
+        /// Keychain calls run on this instance's own serial queue because platform
+        /// storage calls block.
         public nonisolated var unownedExecutor: UnownedSerialExecutor {
-            KeychainExecutor.shared.asUnownedSerialExecutor()
+            executor.asUnownedSerialExecutor()
         }
     #endif
 

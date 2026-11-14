@@ -4,7 +4,23 @@
 
     /// Thread-safe registry of change observers shared by every copy of a ``KeychainEngine``.
     package final class KeychainObserverRegistry: Sendable {
-        package static let platformDefault = KeychainObserverRegistry()
+        private static let defaultStore = KeychainObserverRegistry()
+        #if os(macOS)
+            private static let dataProtectionStore = KeychainObserverRegistry()
+        #endif
+
+        /// The registry every platform-backed engine for `configuration`'s store shares.
+        ///
+        /// macOS has two separate stores, so each has its own registry: an observer of one
+        /// never hears about writes to the other. Other platforms have one store.
+        package static func platformDefault(for configuration: KeychainConfiguration) -> KeychainObserverRegistry {
+            #if os(macOS)
+                if configuration.macOSStore == .dataProtection {
+                    return dataProtectionStore
+                }
+            #endif
+            return defaultStore
+        }
 
         private struct Observer: Sendable {
             let service: String?

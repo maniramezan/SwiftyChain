@@ -61,7 +61,7 @@
     func sharedRegistryReceivesStorageAndOtherActorWrites() async throws {
         let service = "tests.observation.shared.\(UUID().uuidString)"
         let backend = InMemoryKeychainBackend()
-        let registry = KeychainObserverRegistry.platformDefault
+        let registry = KeychainObserverRegistry.platformDefault(for: .init())
         let observer = KeychainEngine(backend: backend, observers: registry)
         let writer = KeychainEngine(backend: backend, observers: registry)
         let stream = observer.observeKeychainChanges(service: service, accessGroup: nil)
@@ -111,6 +111,16 @@
             }
         }
     #endif
+#endif
+
+#if Observation && os(macOS)
+    @Test
+    func macOSStoresHaveSeparateObserverRegistries() {
+        let legacy = KeychainObserverRegistry.platformDefault(for: .init(macOSStore: .legacy))
+        let dataProtection = KeychainObserverRegistry.platformDefault(for: .init(macOSStore: .dataProtection))
+        #expect(legacy !== dataProtection)
+        #expect(legacy === KeychainObserverRegistry.platformDefault(for: .init()))
+    }
 #endif
 
 #if Observation

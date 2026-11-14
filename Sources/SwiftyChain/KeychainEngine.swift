@@ -27,7 +27,9 @@ package struct KeychainEngine: Sendable {
 
     package static func platformDefault(configuration: KeychainConfiguration = .init()) -> Self {
         #if Observation
-            Self(backend: PlatformDefaultBackend.make(configuration: configuration), observers: .platformDefault)
+            Self(
+                backend: PlatformDefaultBackend.make(configuration: configuration),
+                observers: .platformDefault(for: configuration))
         #else
             Self(backend: PlatformDefaultBackend.make(configuration: configuration))
         #endif
