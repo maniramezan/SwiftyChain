@@ -125,6 +125,8 @@ public struct InternetPasswordKey: Sendable, Hashable {
     public let accessGroup: String?
     /// The accessibility policy for this item, or `nil` for the platform default.
     public let accessibility: KeychainAccessibility?
+    /// Authentication required when accessing the stored item.
+    public let accessControl: KeychainAccessControl?
 
     /// Creates an internet password key descriptor.
     ///
@@ -145,7 +147,8 @@ public struct InternetPasswordKey: Sendable, Hashable {
         protocol: InternetProtocol = .https,
         authenticationType: AuthenticationType = .default,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility? = nil
+        accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil
     ) {
         self.server = server
         self.account = account
@@ -155,6 +158,7 @@ public struct InternetPasswordKey: Sendable, Hashable {
         self.authenticationType = authenticationType
         self.accessGroup = accessGroup
         self.accessibility = accessibility
+        self.accessControl = accessControl
     }
 
     /// Two keys are equal when they identify the same keychain item.

@@ -39,6 +39,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
     private struct Item: Sendable {
         let query: KeychainQuery
         var accessibility: KeychainAccessibility?
+        var accessControl: KeychainAccessControl?
         var label: String?
         var comment: String?
         var data: Data
@@ -103,6 +104,7 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
         let item = Item(
             query: query,
             accessibility: attributes.accessibility,
+            accessControl: attributes.accessControl,
             label: attributes.label,
             comment: attributes.comment,
             data: attributes.data ?? Data()
@@ -145,6 +147,9 @@ public final class InMemoryKeychainBackend: KeychainBackend, Sendable {
                 }
                 if let comment = attributes.comment {
                     items[index].comment = comment
+                }
+                if let accessControl = attributes.accessControl {
+                    items[index].accessControl = accessControl
                 }
                 if let accessibility = attributes.accessibility {
                     items[index].accessibility = accessibility

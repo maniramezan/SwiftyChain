@@ -11,7 +11,15 @@
 
         package init(configuration: KeychainConfiguration = .init()) {
             self.configuration = configuration
-            self.capabilities = Self.platformCapabilities
+            var capabilities = Self.platformCapabilities
+            #if os(macOS)
+                if configuration.macOSStore == .dataProtection {
+                    capabilities.insert(.accessControl)
+                }
+            #elseif !os(tvOS)
+                capabilities.insert(.accessControl)
+            #endif
+            self.capabilities = capabilities
         }
 
         /// What this OS's keychain supports.
@@ -33,7 +41,7 @@
 
         package func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
             logSecurityCall("SecItemAdd", query: query)
-            try mapStatus(SecItemAdd(addQuery(from: query, attributes: attributes) as CFDictionary, nil))
+            try mapStatus(SecItemAdd(try addQuery(from: query, attributes: attributes) as CFDictionary, nil))
             SwiftyChainLoggers.backend.debug("SecItemAdd succeeded")
         }
 
@@ -92,7 +100,7 @@
             logSecurityCall("SecItemUpdate", query: query)
             let status = SecItemUpdate(
                 matchQuery(from: query) as CFDictionary,
-                updateAttributes(from: attributes) as CFDictionary
+                try updateAttributes(from: attributes) as CFDictionary
             )
             try mapStatus(status)
             SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
@@ -121,7 +129,7 @@
         }
 
         /// The dictionary `SecItemAdd` receives: the identity attributes plus every written value.
-        package func addQuery(from query: KeychainQuery, attributes: KeychainAttributes) -> [String: Any] {
+        package func addQuery(from query: KeychainQuery, attributes: KeychainAttributes) throws -> [String: Any] {
             var secAttributes = secQuery(from: query)
             secAttributes[kSecValueData as String] = attributes.data ?? Data()
             if let label = attributes.label {
@@ -130,14 +138,15 @@
             if let comment = attributes.comment {
                 secAttributes[kSecAttrComment as String] = comment
             }
-            if let accessibility = attributes.accessibility {
-                secAttributes[kSecAttrAccessible as String] = accessibility.secValue
-            }
+            secAttributes.merge(
+                try protectionAttributes(
+                    accessibility: attributes.accessibility, accessControl: attributes.accessControl)
+            ) { _, new in new }
             return secAttributes
         }
 
         /// The dictionary of changes `SecItemUpdate` receives.
-        package func updateAttributes(from attributes: KeychainAttributes) -> [String: Any] {
+        package func updateAttributes(from attributes: KeychainAttributes) throws -> [String: Any] {
             var secAttributes: [String: Any] = [:]
             if let data = attributes.data {
                 secAttributes[kSecValueData as String] = data
@@ -148,10 +157,47 @@
             if let comment = attributes.comment {
                 secAttributes[kSecAttrComment as String] = comment
             }
-            if let accessibility = attributes.accessibility {
-                secAttributes[kSecAttrAccessible as String] = accessibility.secValue
-            }
+            secAttributes.merge(
+                try protectionAttributes(
+                    accessibility: attributes.accessibility, accessControl: attributes.accessControl)
+            ) { _, new in new }
             return secAttributes
+        }
+
+        package func protectionAttributes(
+            accessibility: KeychainAccessibility?, accessControl: KeychainAccessControl?
+        ) throws -> [String: Any] {
+            if let accessControl {
+                #if os(tvOS)
+                    throw KeychainError.platformUnsupported("Access control is not supported on tvOS")
+                #else
+                    guard capabilities.contains(.accessControl) else {
+                        throw KeychainError.platformUnsupported(
+                            "Access control is not supported by this keychain backend or configuration")
+                    }
+                    let flags: SecAccessControlCreateFlags =
+                        switch accessControl {
+                        case .userPresence: .userPresence
+                        case .biometryAny: .biometryAny
+                        case .biometryCurrentSet: .biometryCurrentSet
+                        case .devicePasscode: .devicePasscode
+                        }
+                    var error: Unmanaged<CFError>?
+                    guard
+                        let control = SecAccessControlCreateWithFlags(
+                            nil, (accessibility ?? .whenUnlocked).secValue, flags, &error
+                        )
+                    else {
+                        if let error { _ = error.takeRetainedValue() }
+                        throw KeychainError.invalidArgument("The access-control policy could not be created")
+                    }
+                    return [kSecAttrAccessControl as String: control]
+                #endif
+            }
+            if let accessibility {
+                return [kSecAttrAccessible as String: accessibility.secValue]
+            }
+            return [:]
         }
 
         private func configuredQuery(_ attributes: [String: Any]) -> [String: Any] {
@@ -345,9 +391,10 @@
             {
                 var attributes = cryptoSecQuery(from: query)
                 attributes[kSecValueRef as String] = key
-                if let accessibility = keyAttributes.accessibility {
-                    attributes[kSecAttrAccessible as String] = accessibility.secValue
-                }
+                attributes.merge(
+                    try protectionAttributes(
+                        accessibility: keyAttributes.accessibility, accessControl: keyAttributes.accessControl)
+                ) { _, new in new }
                 let status = SecItemAdd(attributes as CFDictionary, nil)
                 try mapStatus(status)
             }

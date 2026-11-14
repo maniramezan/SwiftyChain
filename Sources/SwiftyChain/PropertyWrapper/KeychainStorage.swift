@@ -46,12 +46,13 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
         service: String,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
         isSynchronizable: Bool = false,
         configuration: KeychainConfiguration = .init()
     ) {
         self.key = KeychainKey(
             service: service, account: account, accessGroup: accessGroup,
-            accessibility: accessibility, isSynchronizable: isSynchronizable)
+            accessibility: accessibility, accessControl: accessControl, isSynchronizable: isSynchronizable)
         self.engine = .platformDefault(configuration: configuration)
         self.errorBox = ErrorBox()
     }
@@ -72,13 +73,14 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
         backend: any KeychainBackend,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
         isSynchronizable: Bool = false
     ) {
         self.key = KeychainKey(
             service: service,
             account: account,
             accessGroup: accessGroup,
-            accessibility: accessibility,
+            accessibility: accessibility, accessControl: accessControl,
             isSynchronizable: isSynchronizable
         )
         self.engine = KeychainEngine(backend: backend)

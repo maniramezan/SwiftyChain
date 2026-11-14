@@ -47,6 +47,8 @@
         public let accessGroup: String?
         /// The accessibility policy for this item, or `nil` for the platform default.
         public let accessibility: KeychainAccessibility?
+        /// Authentication required when accessing the stored item.
+        public let accessControl: KeychainAccessControl?
 
         /// Creates a cryptographic key reference.
         ///
@@ -57,11 +59,13 @@
         public init(
             tag: String,
             accessGroup: String? = nil,
-            accessibility: KeychainAccessibility? = nil
+            accessibility: KeychainAccessibility? = nil,
+            accessControl: KeychainAccessControl? = nil
         ) {
             self.tag = tag
             self.accessGroup = accessGroup
             self.accessibility = accessibility
+            self.accessControl = accessControl
         }
 
         /// Two references identify the same key when their tag and access group match.
@@ -137,10 +141,12 @@
                 "saveCryptoKey started for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
             )
             do {
+                try validateCryptoReference(keyRef, writing: true)
                 try cryptoBackend().addCryptoKey(
                     key.rawValue,
                     query: cryptoKeyQuery(for: keyRef),
-                    attributes: CryptoKeyAttributes(accessibility: keyRef.accessibility)
+                    attributes: CryptoKeyAttributes(
+                        accessibility: keyRef.accessibility, accessControl: keyRef.accessControl)
                 )
             } catch {
                 SwiftyChainLoggers.keychain.debug(
@@ -154,10 +160,12 @@
         }
 
         package func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey {
-            StoredSecKey(try cryptoBackend().loadCryptoKey(query: cryptoKeyQuery(for: keyRef)))
+            try validateCryptoReference(keyRef)
+            return StoredSecKey(try cryptoBackend().loadCryptoKey(query: cryptoKeyQuery(for: keyRef)))
         }
 
         package func deleteCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws {
+            try validateCryptoReference(keyRef)
             try cryptoBackend().deleteCryptoKey(query: cryptoKeyQuery(for: keyRef))
         }
 
@@ -168,6 +176,13 @@
                 throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
             }
             return cryptoBackend
+        }
+
+        private func validateCryptoReference(_ keyRef: CryptoKeyReference<StoredSecKey>, writing: Bool = false) throws {
+            try KeychainQueryValidator.validate(
+                KeychainQuery(itemClass: .cryptographicKey, accessGroup: keyRef.accessGroup),
+                attributes: writing ? KeychainAttributes(accessControl: keyRef.accessControl) : nil,
+                for: writing ? .add : .read, against: backend.capabilities)
         }
 
         private func cryptoKeyQuery(for keyRef: CryptoKeyReference<StoredSecKey>) -> CryptoKeyQuery {

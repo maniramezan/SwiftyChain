@@ -38,6 +38,8 @@ public struct KeychainKey<Value: KeychainStorable>: Sendable, Hashable {
     /// store new items with the platform default (``KeychainAccessibility/whenUnlocked``
     /// on Apple platforms) and leave an existing item's policy unchanged on update.
     public let accessibility: KeychainAccessibility?
+    /// Authentication required when accessing the stored item.
+    public let accessControl: KeychainAccessControl?
     /// Whether this item is synchronized to iCloud Keychain (Apple platforms only).
     public let isSynchronizable: Bool
     /// An optional human-readable label for the item displayed in Keychain Access.
@@ -62,6 +64,7 @@ public struct KeychainKey<Value: KeychainStorable>: Sendable, Hashable {
         account: String,
         accessGroup: String? = nil,
         accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
         isSynchronizable: Bool = false,
         label: String? = nil,
         comment: String? = nil
@@ -70,6 +73,7 @@ public struct KeychainKey<Value: KeychainStorable>: Sendable, Hashable {
         self.account = account
         self.accessGroup = accessGroup
         self.accessibility = accessibility
+        self.accessControl = accessControl
         self.isSynchronizable = isSynchronizable
         self.label = label
         self.comment = comment

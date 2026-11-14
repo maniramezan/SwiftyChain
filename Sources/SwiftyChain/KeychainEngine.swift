@@ -209,9 +209,11 @@ package struct KeychainEngine: Sendable {
     package func saveInternetPassword(_ password: String, for key: InternetPasswordKey) throws {
         logKeychainOperationStarted("saveInternetPassword", service: key.server, account: key.account)
         do {
+            let attributes = KeychainAttributes(
+                data: try password.keychainData(), accessibility: key.accessibility, accessControl: key.accessControl)
             try backend.add(
-                validated(internetIdentityQuery(for: key), for: .add),
-                attributes: KeychainAttributes(data: password.keychainData(), accessibility: key.accessibility)
+                validated(internetIdentityQuery(for: key), attributes: attributes, for: .add),
+                attributes: attributes
             )
             notify(server: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
             logKeychainOperationSucceeded("saveInternetPassword", service: key.server, account: key.account)
@@ -325,7 +327,11 @@ package struct KeychainEngine: Sendable {
         if query.isSynchronizable == true, attributes?.accessibility?.isThisDeviceOnly == true {
             throw invalidArgument("A synchronizable item can't use a ThisDeviceOnly accessibility")
         }
-        try KeychainQueryValidator.validate(query, for: operation, against: backend.capabilities)
+        if query.isSynchronizable == true, attributes?.accessControl != nil {
+            throw invalidArgument("A synchronizable item can't use access control")
+        }
+        try KeychainQueryValidator.validate(
+            query, attributes: attributes, for: operation, against: backend.capabilities)
         return query
     }
 
@@ -348,7 +354,8 @@ package struct KeychainEngine: Sendable {
             data: try value.keychainData(),
             label: key.label,
             comment: key.comment,
-            accessibility: key.accessibility
+            accessibility: key.accessibility,
+            accessControl: key.accessControl
         )
     }
 
