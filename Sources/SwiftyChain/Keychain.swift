@@ -54,8 +54,8 @@ public actor Keychain: KeychainProtocol {
     #endif
 
     /// Creates a new ``Keychain`` instance backed by the platform keychain.
-    public init() {
-        self.engine = .platformDefault()
+    public init(configuration: KeychainConfiguration = .init()) {
+        self.engine = .platformDefault(configuration: configuration)
     }
 
     /// Creates a ``Keychain`` that stores items in a custom ``KeychainBackend``.

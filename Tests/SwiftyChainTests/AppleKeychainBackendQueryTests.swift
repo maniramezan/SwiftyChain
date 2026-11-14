@@ -5,6 +5,25 @@
     import SwiftyChainAppleKeychain
     import Testing
 
+    #if os(macOS)
+        @Test(arguments: [KeychainConfiguration.MacOSStore.legacy, .dataProtection])
+        func macOSStoreFlagReachesEveryQuery(_ store: KeychainConfiguration.MacOSStore) {
+            let backend = AppleKeychainBackend(configuration: .init(macOSStore: store))
+            let identity = KeychainQuery(service: "tests.store", account: "token")
+            let add = backend.addQuery(from: identity, attributes: .init())
+            let match = backend.matchQuery(from: identity)
+            #expect((add[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
+            #expect((match[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
+            #if Cryptography
+                let bulk = backend.cryptoBulkDeleteQuery(accessGroup: nil)
+                let crypto = backend.cryptoSecQuery(from: .init(tag: "tests.store"))
+                #expect((bulk[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
+                #expect(
+                    (crypto[kSecUseDataProtectionKeychain as String] as? Bool ?? false) == (store == .dataProtection))
+            #endif
+        }
+    #endif
+
     @Test
     func matchQueryIncludesSynchronizableItemsWhenUnset() throws {
         let query = AppleKeychainBackend().matchQuery(
