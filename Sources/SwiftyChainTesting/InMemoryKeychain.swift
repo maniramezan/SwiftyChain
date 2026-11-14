@@ -40,7 +40,7 @@ import SwiftyChain
 /// When the `cryptography` trait is enabled, `InMemoryKeychain` implements
 /// `saveCryptoKey(_:for:)`, `loadCryptoKey(keyRef:)`, and `deleteCryptoKey(keyRef:)`.
 public actor InMemoryKeychain: KeychainProtocol {
-    private let engine = KeychainEngine(backend: InMemoryStorageBackend())
+    private let engine = KeychainEngine(backend: InMemoryKeychainBackend())
 
     /// Creates a new, empty in-memory keychain.
     public init() {}

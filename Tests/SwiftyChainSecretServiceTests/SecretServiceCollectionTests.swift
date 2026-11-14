@@ -21,12 +21,6 @@
             let backend = SecretServiceBackend()
             let service = "tests.collection.\(UUID().uuidString)"
             let key = KeychainQuery(itemClass: .genericPassword, service: service, account: "token")
-            let read = KeychainQuery(
-                itemClass: .genericPassword,
-                service: service,
-                account: "token",
-                returnData: true
-            )
             try Self.storeInSessionCollection(service: service, secret: "first")
             defer {
                 do {
@@ -35,12 +29,9 @@
                     Issue.record("Could not clean up collection test items: \(error)")
                 }
             }
-            #expect(try backend.copyMatching(read) == .data(Data("first".utf8)))
+            #expect(try backend.data(matching: key) == Data("first".utf8))
 
-            try backend.update(
-                matching: key,
-                to: KeychainAttributes(data: Data("second".utf8), label: "renamed", comment: nil, accessibility: nil)
-            )
+            try backend.update(matching: key, to: KeychainAttributes(data: Data("second".utf8), label: "renamed"))
 
             let matches = try SecretServiceClient(timeout: .seconds(30)).search(
                 SecretServiceAttributes.matching(key),

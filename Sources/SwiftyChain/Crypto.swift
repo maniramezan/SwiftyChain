@@ -130,17 +130,18 @@
         package func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
             let cryptoBackend = try cryptoStorageBackend()
             let query = cryptoKeyQuery(for: keyRef)
+            let attributes = CryptoKeyAttributes(accessibility: keyRef.accessibility)
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey started for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
             )
             do {
-                try cryptoBackend.addCryptoKey(key.rawValue, query: query)
+                try cryptoBackend.addCryptoKey(key.rawValue, query: query, attributes: attributes)
             } catch KeychainError.duplicateItem {
                 SwiftyChainLoggers.keychain.debug(
                     "saveCryptoKey replacing existing key for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
                 )
                 try cryptoBackend.deleteCryptoKey(query: query)
-                try cryptoBackend.addCryptoKey(key.rawValue, query: query)
+                try cryptoBackend.addCryptoKey(key.rawValue, query: query, attributes: attributes)
             }
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey succeeded for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
@@ -155,8 +156,8 @@
             try cryptoStorageBackend().deleteCryptoKey(query: cryptoKeyQuery(for: keyRef))
         }
 
-        private func cryptoStorageBackend() throws -> any CryptoStorageBackend {
-            guard backend.capabilities.contains(.cryptoKeys), let cryptoBackend = backend as? any CryptoStorageBackend
+        private func cryptoStorageBackend() throws -> any KeychainCryptoBackend {
+            guard backend.capabilities.contains(.cryptoKeys), let cryptoBackend = backend as? any KeychainCryptoBackend
             else {
                 SwiftyChainLoggers.keychain.debug("Crypto key operation requested on a backend without cryptoKeys")
                 throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
@@ -165,7 +166,7 @@
         }
 
         private func cryptoKeyQuery(for keyRef: CryptoKeyReference<StoredSecKey>) -> CryptoKeyQuery {
-            CryptoKeyQuery(tag: keyRef.tag, accessGroup: keyRef.accessGroup, accessibility: keyRef.accessibility)
+            CryptoKeyQuery(tag: keyRef.tag, accessGroup: keyRef.accessGroup)
         }
     }
 #endif

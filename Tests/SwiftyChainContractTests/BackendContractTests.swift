@@ -3,7 +3,7 @@ import SwiftyChain
 import SwiftyChainTesting
 import Testing
 
-#if canImport(SwiftyChainAppleKeychain)
+#if canImport(Security)
     import SwiftyChainAppleKeychain
 #elseif os(Linux)
     import SwiftyChainSecretService
@@ -12,7 +12,7 @@ import Testing
 /// A backend the contract suite runs against, with the features the test host can exercise.
 struct BackendFixture: Sendable, CustomTestStringConvertible {
     let name: String
-    let make: @Sendable () -> any SecureStorageBackend
+    let make: @Sendable () -> any KeychainBackend
     /// Synchronizable writes need an iCloud-entitled app on Apple platforms.
     let canWriteSynchronizableItems: Bool
     /// Custom access groups need a keychain-sharing entitlement on Apple platforms.
@@ -24,12 +24,12 @@ struct BackendFixture: Sendable, CustomTestStringConvertible {
         var fixtures = [
             BackendFixture(
                 name: "in-memory",
-                make: { InMemoryStorageBackend() },
+                make: { InMemoryKeychainBackend() },
                 canWriteSynchronizableItems: true,
                 canUseCustomAccessGroups: true
             )
         ]
-        #if canImport(SwiftyChainAppleKeychain)
+        #if canImport(Security)
             if ProcessInfo.processInfo.environment["SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION"] == "1" {
                 fixtures.append(
                     BackendFixture(
@@ -334,31 +334,9 @@ struct BackendContractTests {
     }
 }
 
-/// A backend that reports only the given capabilities, for testing validation.
-private struct RestrictedBackend: SecureStorageBackend {
-    let base: InMemoryStorageBackend
-    let capabilities: SecureStorageCapabilities
-
-    func add(_ query: KeychainQuery, data: Data) throws {
-        try base.add(query, data: data)
-    }
-
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-        try base.copyMatching(query)
-    }
-
-    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
-        try base.update(matching: query, to: attributes)
-    }
-
-    func delete(matching query: KeychainQuery) throws {
-        try base.delete(matching: query)
-    }
-}
-
 @Suite("Capability validation")
 struct CapabilityValidationTests {
-    private let keychain = Keychain(backend: RestrictedBackend(base: InMemoryStorageBackend(), capabilities: []))
+    private let keychain = Keychain(backend: InMemoryKeychainBackend(capabilities: []))
 
     @Test
     func synchronizableItemsAreRejected() async throws {
@@ -435,13 +413,11 @@ struct CapabilityValidationTests {
     }
 
     @Test
-    func keychainStorageValidatesThroughTheAdapter() {
+    func keychainStorageValidatesCapabilities() {
         let storage = KeychainStorage<String>(
             "a",
             service: "tests.capabilities",
-            backend: SecureStorageKeychainBackend(
-                RestrictedBackend(base: InMemoryStorageBackend(), capabilities: [])
-            ),
+            backend: InMemoryKeychainBackend(capabilities: []),
             isSynchronizable: true
         )
 

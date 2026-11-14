@@ -17,8 +17,7 @@
             let backend = SecretServiceBackend(timeout: .seconds(10))
             let service = "tests.restart.\(UUID().uuidString)"
             let key = KeychainQuery(itemClass: .genericPassword, service: service, account: "a")
-            let read = KeychainQuery(itemClass: .genericPassword, service: service, account: "a", returnData: true)
-            try backend.add(key, data: Data("before".utf8))
+            try backend.add(key, attributes: KeychainAttributes(data: Data("before".utf8)))
             defer {
                 do {
                     try backend.delete(matching: KeychainQuery(itemClass: .genericPassword, service: service))
@@ -29,12 +28,9 @@
 
             try Self.restartKeyringDaemon()
 
-            #expect(try backend.copyMatching(read) == .data(Data("before".utf8)))
-            try backend.update(
-                matching: key,
-                to: KeychainAttributes(data: Data("after".utf8), label: nil, comment: nil, accessibility: nil)
-            )
-            #expect(try backend.copyMatching(read) == .data(Data("after".utf8)))
+            #expect(try backend.data(matching: key) == Data("before".utf8))
+            try backend.update(matching: key, to: KeychainAttributes(data: Data("after".utf8)))
+            #expect(try backend.data(matching: key) == Data("after".utf8))
         }
 
         private static func restartKeyringDaemon() throws {

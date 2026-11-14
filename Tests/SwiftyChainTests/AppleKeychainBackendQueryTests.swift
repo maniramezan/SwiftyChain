@@ -1,4 +1,4 @@
-#if canImport(SwiftyChainAppleKeychain)
+#if canImport(Security)
     import Foundation
     import Security
     import SwiftyChain

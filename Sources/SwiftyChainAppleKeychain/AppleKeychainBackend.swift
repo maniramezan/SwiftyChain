@@ -3,81 +3,75 @@
     import Security
     import SwiftyChainCore
 
-    /// The ``SecureStorageBackend`` for Apple platforms, backed by the Security framework.
-    package struct AppleKeychainBackend: SecureStorageBackend {
-        package let capabilities: SecureStorageCapabilities = .all
+    /// The ``KeychainBackend`` for Apple platforms, backed by the Security framework.
+    package struct AppleKeychainBackend: KeychainBackend {
+        package let capabilities: KeychainBackendCapabilities = .all
 
         package init() {}
 
-        package func add(_ query: KeychainQuery, data: Data) throws {
+        package func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
             logSecurityCall("SecItemAdd", query: query)
-            var attributes = secQuery(from: query)
-            attributes[kSecValueData as String] = data
-            if let accessibility = query.accessibility {
-                attributes[kSecAttrAccessible as String] = accessibility.secValue
-            }
-
-            let status = SecItemAdd(attributes as CFDictionary, nil)
-            try mapStatus(status)
+            try mapStatus(SecItemAdd(addQuery(from: query, attributes: attributes) as CFDictionary, nil))
             SwiftyChainLoggers.backend.debug("SecItemAdd succeeded")
         }
 
-        package func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+        package func data(matching query: KeychainQuery) throws -> Data {
             logSecurityCall("SecItemCopyMatching", query: query)
             var secAttributes = matchQuery(from: query)
-            secAttributes[kSecReturnData as String] = query.returnData
-            secAttributes[kSecReturnAttributes as String] = query.returnAttributes
-            secAttributes[kSecMatchLimit as String] = query.matchLimit.secValue
+            secAttributes[kSecReturnData as String] = true
+            secAttributes[kSecMatchLimit as String] = kSecMatchLimitOne
+
+            var result: CFTypeRef?
+            try mapStatus(SecItemCopyMatching(secAttributes as CFDictionary, &result))
+            guard let data = result as? Data else {
+                SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected data result")
+                throw KeychainError.unexpectedData
+            }
+            SwiftyChainLoggers.backend.debug("SecItemCopyMatching succeeded")
+            return data
+        }
+
+        package func contains(matching query: KeychainQuery) throws -> Bool {
+            logSecurityCall("SecItemCopyMatching", query: query)
+            var secAttributes = matchQuery(from: query)
+            secAttributes[kSecMatchLimit as String] = kSecMatchLimitOne
+            let status = SecItemCopyMatching(secAttributes as CFDictionary, nil)
+            if status == errSecItemNotFound {
+                SwiftyChainLoggers.backend.debug("SecItemCopyMatching found no item")
+                return false
+            }
+            try mapStatus(status)
+            SwiftyChainLoggers.backend.debug("SecItemCopyMatching succeeded")
+            return true
+        }
+
+        package func accounts(matching query: KeychainQuery) throws -> [String] {
+            logSecurityCall("SecItemCopyMatching", query: query)
+            var secAttributes = matchQuery(from: query)
+            secAttributes[kSecReturnAttributes as String] = true
+            secAttributes[kSecMatchLimit as String] = kSecMatchLimitAll
 
             var result: CFTypeRef?
             let status = SecItemCopyMatching(secAttributes as CFDictionary, &result)
+            if status == errSecItemNotFound {
+                SwiftyChainLoggers.backend.debug("SecItemCopyMatching found no items")
+                return []
+            }
             try mapStatus(status)
+            guard let items = result as? [[String: Any]] else {
+                SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected array result")
+                throw KeychainError.unexpectedData
+            }
             SwiftyChainLoggers.backend.debug("SecItemCopyMatching succeeded")
-
-            if query.matchLimit == .all {
-                guard let array = result as? [[String: Any]] else {
-                    SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected array result")
-                    throw KeychainError.unexpectedData
-                }
-                return .items(array.map { .attributes(attributes(from: $0)) })
-            }
-
-            if query.returnData {
-                guard let data = result as? Data else {
-                    SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected data result")
-                    throw KeychainError.unexpectedData
-                }
-                return .data(data)
-            }
-
-            if query.returnAttributes {
-                guard let dictionary = result as? [String: Any] else {
-                    SwiftyChainLoggers.backend.error("SecItemCopyMatching returned unexpected attributes result")
-                    throw KeychainError.unexpectedData
-                }
-                return .attributes(attributes(from: dictionary))
-            }
-
-            return .attributes([])
+            return items.compactMap { $0[kSecAttrAccount as String] as? String }
         }
 
         package func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
             logSecurityCall("SecItemUpdate", query: query)
-            var updateAttributes: [String: Any] = [:]
-            if let data = attributes.data {
-                updateAttributes[kSecValueData as String] = data
-            }
-            if let label = attributes.label {
-                updateAttributes[kSecAttrLabel as String] = label
-            }
-            if let comment = attributes.comment {
-                updateAttributes[kSecAttrComment as String] = comment
-            }
-            if let accessibility = attributes.accessibility {
-                updateAttributes[kSecAttrAccessible as String] = accessibility.secValue
-            }
-
-            let status = SecItemUpdate(matchQuery(from: query) as CFDictionary, updateAttributes as CFDictionary)
+            let status = SecItemUpdate(
+                matchQuery(from: query) as CFDictionary,
+                updateAttributes(from: attributes) as CFDictionary
+            )
             try mapStatus(status)
             SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
         }
@@ -100,6 +94,40 @@
                 "SecItemDelete exceeded safety cap for itemClass=\(String(describing: query.itemClass), privacy: .public) service=\(query.service ?? "<none>", privacy: .private(mask: .hash)) account=\(query.account ?? "<none>", privacy: .private(mask: .hash)) server=\(query.server ?? "<none>", privacy: .private(mask: .hash))"
             )
             throw KeychainError.operationFailed(errSecInternalError)
+        }
+
+        /// The dictionary `SecItemAdd` receives: the identity attributes plus every written value.
+        package func addQuery(from query: KeychainQuery, attributes: KeychainAttributes) -> [String: Any] {
+            var secAttributes = secQuery(from: query)
+            secAttributes[kSecValueData as String] = attributes.data ?? Data()
+            if let label = attributes.label {
+                secAttributes[kSecAttrLabel as String] = label
+            }
+            if let comment = attributes.comment {
+                secAttributes[kSecAttrComment as String] = comment
+            }
+            if let accessibility = attributes.accessibility {
+                secAttributes[kSecAttrAccessible as String] = accessibility.secValue
+            }
+            return secAttributes
+        }
+
+        /// The dictionary of changes `SecItemUpdate` receives.
+        package func updateAttributes(from attributes: KeychainAttributes) -> [String: Any] {
+            var secAttributes: [String: Any] = [:]
+            if let data = attributes.data {
+                secAttributes[kSecValueData as String] = data
+            }
+            if let label = attributes.label {
+                secAttributes[kSecAttrLabel as String] = label
+            }
+            if let comment = attributes.comment {
+                secAttributes[kSecAttrComment as String] = comment
+            }
+            if let accessibility = attributes.accessibility {
+                secAttributes[kSecAttrAccessible as String] = accessibility.secValue
+            }
+            return secAttributes
         }
 
         private var deleteSafetyCap: Int { 10_000 }
@@ -151,27 +179,10 @@
             if let authenticationType = query.authenticationType {
                 attributes[kSecAttrAuthenticationType as String] = authenticationType.secValue
             }
-            if let label = query.label {
-                attributes[kSecAttrLabel as String] = label
-            }
-            if let comment = query.comment {
-                attributes[kSecAttrComment as String] = comment
-            }
 
             return attributes
         }
         // swiftlint:enable cyclomatic_complexity
-
-        private func attributes(from dictionary: [String: Any]) -> [KeychainAttribute] {
-            var values: [KeychainAttribute] = []
-            if let account = dictionary[kSecAttrAccount as String] as? String {
-                values.append(.account(account))
-            }
-            if let service = dictionary[kSecAttrService as String] as? String {
-                values.append(.service(service))
-            }
-            return values
-        }
 
         private func logSecurityCall(_ operation: StaticString, query: KeychainQuery) {
             SwiftyChainLoggers.backend.debug(
@@ -218,17 +229,6 @@
                 kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             case .whenPasscodeSetThisDeviceOnly:
                 kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
-            }
-        }
-    }
-
-    extension MatchLimit {
-        fileprivate var secValue: CFString {
-            switch self {
-            case .one:
-                kSecMatchLimitOne
-            case .all:
-                kSecMatchLimitAll
             }
         }
     }
@@ -300,11 +300,15 @@
     }
 
     #if Cryptography
-        extension AppleKeychainBackend: CryptoStorageBackend {
-            package func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery) throws {
+        extension AppleKeychainBackend: KeychainCryptoBackend {
+            package func addCryptoKey(
+                _ key: SecKey, query: CryptoKeyQuery, attributes keyAttributes: CryptoKeyAttributes
+            )
+                throws
+            {
                 var attributes = cryptoSecQuery(from: query)
                 attributes[kSecValueRef as String] = key
-                if let accessibility = query.accessibility {
+                if let accessibility = keyAttributes.accessibility {
                     attributes[kSecAttrAccessible as String] = accessibility.secValue
                 }
                 let status = SecItemAdd(attributes as CFDictionary, nil)

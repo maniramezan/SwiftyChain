@@ -6,43 +6,26 @@
 
     @testable import SwiftyChain
 
-    private struct NonCryptoSecureStorageBackend: SecureStorageBackend {
-        let capabilities: SecureStorageCapabilities = .all
-
-        func add(_ query: KeychainQuery, data: Data) throws {}
-
-        func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-            .attributes([])
-        }
-
-        func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
-
-        func delete(matching query: KeychainQuery) throws {}
-    }
-
-    private final class MockCryptoSecureStorageBackend: SecureStorageBackend, CryptoStorageBackend,
-        @unchecked Sendable
-    {
-        let capabilities: SecureStorageCapabilities = .all
+    private final class MockCryptoBackend: KeychainCryptoBackend, @unchecked Sendable {
+        let capabilities: KeychainBackendCapabilities = .all
 
         private var storedKeys: [String: SecKey] = [:]
         private(set) var deletedQueries: [CryptoKeyQuery] = []
+        private(set) var addedAttributes: [CryptoKeyAttributes] = []
 
-        func add(_ query: KeychainQuery, data: Data) throws {}
-
-        func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-            .attributes([])
-        }
-
+        func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {}
+        func data(matching query: KeychainQuery) throws -> Data { throw KeychainError.itemNotFound }
+        func contains(matching query: KeychainQuery) throws -> Bool { false }
+        func accounts(matching query: KeychainQuery) throws -> [String] { [] }
         func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
-
         func delete(matching query: KeychainQuery) throws {}
 
-        func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery) throws {
+        func addCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
             if storedKeys[query.tag] != nil {
                 throw KeychainError.duplicateItem
             }
             storedKeys[query.tag] = key
+            addedAttributes.append(attributes)
         }
 
         func loadCryptoKey(query: CryptoKeyQuery) throws -> SecKey {
@@ -54,9 +37,7 @@
 
         func deleteCryptoKey(query: CryptoKeyQuery) throws {
             deletedQueries.append(query)
-            guard storedKeys.removeValue(forKey: query.tag) != nil else {
-                throw KeychainError.itemNotFound
-            }
+            storedKeys.removeValue(forKey: query.tag)
         }
     }
 
@@ -92,7 +73,7 @@
 
     @Test
     func cryptoOperationsFailWithoutCryptoBackend() async throws {
-        let keychain = Keychain(backend: NonCryptoSecureStorageBackend())
+        let keychain = Keychain(backend: InMemoryKeychainBackend(capabilities: [.internetPasswords]))
         let secKey = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.unsupported")
 
@@ -115,7 +96,7 @@
 
     @Test
     func cryptoActorRoundTripsThroughInjectedCryptoBackend() async throws {
-        let backend = MockCryptoSecureStorageBackend()
+        let backend = MockCryptoBackend()
         let keychain = Keychain(backend: backend)
         let secKey = try makeECKey()
         let ref = CryptoKeyReference<StoredSecKey>(
@@ -136,12 +117,12 @@
 
         #expect(backend.deletedQueries.last?.tag == ref.tag)
         #expect(backend.deletedQueries.last?.accessGroup == ref.accessGroup)
-        #expect(backend.deletedQueries.last?.accessibility == ref.accessibility)
+        #expect(backend.addedAttributes.last?.accessibility == ref.accessibility)
     }
 
     @Test
     func cryptoActorOverwritesDuplicateKeyViaDeleteAndReadd() async throws {
-        let backend = MockCryptoSecureStorageBackend()
+        let backend = MockCryptoBackend()
         let keychain = Keychain(backend: backend)
         let first = try makeECKey()
         let second = try makeECKey()

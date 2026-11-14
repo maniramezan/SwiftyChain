@@ -161,8 +161,8 @@
     }
 
     /// Records whether backend calls arrive on ``KeychainExecutor``'s queue.
-    private final class ExecutorProbeBackend: SecureStorageBackend, @unchecked Sendable {
-        let capabilities: SecureStorageCapabilities = []
+    private final class ExecutorProbeBackend: KeychainBackend, @unchecked Sendable {
+        let capabilities: KeychainBackendCapabilities = []
         private let lock = NSLock()
         private var observed = true
 
@@ -170,13 +170,23 @@
             lock.withLock { observed }
         }
 
-        func add(_ query: KeychainQuery, data: Data) throws {
+        func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
             record()
         }
 
-        func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+        func data(matching query: KeychainQuery) throws -> Data {
             record()
             throw KeychainError.itemNotFound
+        }
+
+        func contains(matching query: KeychainQuery) throws -> Bool {
+            record()
+            return false
+        }
+
+        func accounts(matching query: KeychainQuery) throws -> [String] {
+            record()
+            return []
         }
 
         func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
