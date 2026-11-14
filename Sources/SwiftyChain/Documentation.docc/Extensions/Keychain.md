@@ -29,10 +29,9 @@ let keychain: any KeychainProtocol = InMemoryKeychain() // from SwiftyChainTesti
 
 ### Observation and @KeychainStorage
 
-> Note: Changes made through ``KeychainStorage`` bypass the `Keychain` actor
-> and do **not** emit observation events from
-> ``observeKeychainChanges(service:accessGroup:)``. If you need change
-> notifications, perform writes through ``Keychain/shared`` directly.
+Platform-backed instances and ``KeychainStorage`` share observers, including
+``shared``. Custom backends have a registry per engine. Internet-password events
+name a server instead of a service. See <doc:MigratingTo2>.
 
 ## Topics
 
@@ -42,7 +41,8 @@ let keychain: any KeychainProtocol = InMemoryKeychain() // from SwiftyChainTesti
 
 ### Creating a Keychain
 
-- ``init()``
+- ``init(configuration:)``
+- ``init(backend:)``
 
 ### Saving Values
 

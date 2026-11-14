@@ -1,110 +1,71 @@
 # Architecture
 
-The user-facing overview lives in the DocC article
-[Architecture](Sources/SwiftyChain/Documentation.docc/Articles/Architecture.md). This file is
-for contributors: where code lives and the rules each layer follows.
+The public overview lives in [Architecture](Sources/SwiftyChain/Documentation.docc/Articles/Architecture.md).
 
-## Module Layout
+## Modules and contract
 
-```
-SwiftyChain/
-├── Package.swift
-├── Sources/
-│   ├── SwiftyChainCore/                 # Public value types + backend contract (re-exported)
-│   │   ├── Values/                      # KeychainKey, KeychainError, KeychainStorable, ...
-│   │   ├── Contract/                    # SecureStorageBackend, KeychainQuery, capabilities
-│   │   └── Logging/                     # os.Logger on Apple, swift-log elsewhere
-│   ├── SwiftyChain/                     # Public API
-│   │   ├── Keychain.swift               # Public actor
-│   │   ├── KeychainEngine.swift         # Platform-neutral logic shared by every backend
-│   │   ├── KeychainExecutor.swift       # Linux-only serial executor for the actor
-│   │   ├── PlatformDefaultBackend.swift # Picks the backend; fallback for other platforms
-│   │   ├── PropertyWrapper/             # @KeychainStorage
-│   │   └── Macros.swift, Crypto.swift, Observation.swift, ...
-│   ├── SwiftyChainAppleKeychain/        # Apple backend (SecItem*)
-│   ├── SwiftyChainSecretService/        # Linux backend (libsecret via CSwiftyChainSecret)
-│   ├── CSwiftyChainSecret/              # dlopen-based libsecret loader (C)
-│   ├── SwiftyChainMacros/               # Compiler plugin (always included)
-│   └── SwiftyChainTesting/              # InMemoryKeychain (separate product)
-└── Tests/
-    ├── SwiftyChainTests/
-    ├── SwiftyChainContractTests/        # One suite run against every backend
-    ├── SwiftyChainSecretServiceTests/
-    ├── SwiftyChainTestingTests/
-    └── SwiftyChainMacrosTests/
-```
+`SwiftyChainCore` defines public values and the public `KeychainBackend` contract, re-exported
+by `SwiftyChain`. `Keychain`, `KeychainStorage`, and `SwiftyChainTesting.InMemoryKeychain`
+use `KeychainEngine` for serialization, validation, writes, and observation.
 
-## Backend Contract
-
-`SecureStorageBackend` is the single seam between Swift value types and a platform keychain:
-
-```
+```text
 Keychain actor ─┐
-KeychainStorage ┼→ KeychainEngine → SecureStorageBackend ─→ AppleKeychainBackend → SecItem* (Apple)
-InMemoryKeychain┘                                        ├→ SecretServiceBackend → libsecret (Linux)
-                                                         ├→ InMemoryStorageBackend (tests)
-                                                         └→ UnsupportedPlatformBackend (everything else)
+KeychainStorage ┼→ KeychainEngine → KeychainBackend → AppleKeychainBackend
+InMemoryKeychain┘                                 ├→ SecretServiceBackend
+                                                  ├→ InMemoryKeychainBackend
+                                                  └→ UnsupportedPlatformBackend
 ```
 
-Each backend is the only code that touches its platform's types: `AppleKeychainBackend` owns
-`CFDictionary`/`CFTypeRef`, and `SecretServiceBackend` with `CSwiftyChainSecret` owns every
-GLib and libsecret pointer. Every other layer works with `Sendable` value types
-(`KeychainQuery`, `KeychainAttributes`, `KeychainQueryResult`).
+`KeychainQuery` selects items; `KeychainAttributes` holds write policy and data. Backends
+implement add, data, contains, accounts, update, and delete, and declare
+`KeychainBackendCapabilities`. Query validation depends on the operation. Linux's NUL
+rejection remains in its backend because it is a restriction on C string values.
+Cryptographic operations use the public `KeychainCryptoBackend` refinement when the
+`cryptography` trait and Security framework are available.
 
-Backends declare `SecureStorageCapabilities`. The engine validates every query against them
-before calling the backend, so an option a platform can't honor throws
-`KeychainError.platformUnsupported` with the same message everywhere.
+`nil` query attributes match any value. Synchronizable `nil` matches local and synchronized
+items; `false` matches local items only. Add throws on duplicates, read and update throw on
+missing items, and delete succeeds for missing items. Optional write attributes use platform
+defaults on add and preserve existing policy on update. Write policy does not affect key identity.
 
-## Concurrency Model
+## Concurrency and observation
 
-`Keychain` is a regular `actor`. Backend calls are synchronous and run on the actor's executor.
+Where Dispatch is available, every `Keychain` actor uses one dedicated serial
+`KeychainExecutor` queue. Blocking Security and libsecret calls stay off the cooperative pool.
+WASI uses the default executor. `KeychainStorage` remains synchronous on its caller's thread,
+while sharing the engine's validation and observation behavior.
 
-- **Apple**: the actor uses the default executor. `SecItem*` calls are brief unless an
-  accessibility policy prompts the user.
-- **Linux**: the actor runs on `KeychainExecutor`, one serial dispatch queue shared by every
-  `Keychain` instance. libsecret calls can block for up to the backend timeout (an unlock
-  prompt or a hung daemon), and blocking Swift's cooperative pool would stall unrelated tasks.
-- `SecretServiceClient` serializes every libsecret call process-wide through one static
-  semaphore, so the duplicate check and the write in `add` can't interleave with another
-  `Keychain` or `KeychainStorage` in the same process. Separate processes still race. Each
-  call's deadline is fixed before it waits for the semaphore, so callers queued behind a
-  hung call time out together instead of one after another.
-- `update` changes each matching item in place (`secret_item_set_secret` / `set_label`),
-  in whichever collection holds it, after reading every match first; a write that fails
-  part-way restores the items already changed. libsecret's file backend, used in some
-  sandboxes, has one collection, so there the item is stored again with its attributes.
-- After a failure that may mean the keyring daemon or the bus restarted, the client drops
-  libsecret's cached service proxy (`secret_service_disconnect`). A call that found the
-  proxy addressing a daemon that no longer exists is retried once on a fresh connection.
+With `observation`, platform-backed engines share a process-wide observer registry. Custom
+backends get a registry per engine, even when two engines share the same backend object.
+Generic-password events name a service; internet-password events name a server.
 
-`@KeychainStorage` is synchronous and calls its backend on the caller's thread, bypassing the
-actor. Prefer the actor on the main thread, especially on Linux.
+`SecretServiceClient` serializes libsecret calls process-wide. A deadline includes time waiting
+for another call. Updates change items in their existing collection and attempt rollback after
+partial failure. Failed connections drop the cached proxy; a stale connection can be retried
+once. Separate processes can still race when creating Secret Service items.
 
-## Optional Traits
+## Apple stores and access control
 
-Two SPM traits gate optional features. Neither is enabled by default.
+The macOS default is the legacy login keychain, including `Keychain.shared`.
+`KeychainConfiguration(macOSStore: .dataProtection)` opts in to a separate data-protection
+store; it does not migrate items. That backend puts `kSecUseDataProtectionKeychain` on every
+query, including crypto queries. Accessibility is ignored by the legacy store; ACL dialogs
+can still block it. Other Apple platforms already use data protection.
 
-| Trait | Feature | Swift compile condition |
-|-------|---------|------------------------|
-| `cryptography` | `kSecClassKey` / `SecKey` storage (Apple only) | `#if Cryptography` |
-| `observation` | `AsyncSequence` keychain change stream | `#if Observation` |
+`KeychainAccessControl` creates a `SecAccessControl` object in place of `kSecAttrAccessible`.
+The policy uses the system prompt; there is no `LAContext` API. Linux, tvOS, and the macOS
+legacy store reject access control. tvOS also rejects synchronizable requests because its
+keychain never syncs through iCloud. Apple capabilities reflect the OS and configuration.
 
-Macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are **always included**.
+`saveCryptoKey` throws on duplicates. `upsertCryptoKey` adds or updates in place and never
+uses delete-and-add. The macOS legacy store rejects material replacement: experimental
+updates either failed or reported success while reads retained the original material. Use
+the data-protection store for updates. Non-exportable replacement material is rejected.
 
-## Platform Notes
+## Verification
 
-All six Apple platforms share the `SecItem*` API. Divergences are handled with `#if os(...)`:
-
-| Divergence | Platforms affected |
-|------------|-------------------|
-| `whenPasscodeSetThisDeviceOnly` unavailable | tvOS |
-| User-presence / biometric protection unavailable | tvOS |
-| iCloud Keychain sync (`isSynchronizable`) unavailable | tvOS |
-| Access groups require entitlements | iOS, iPadOS, visionOS |
-| Multiple keychains, ACLs | macOS only |
-
-Linux uses the freedesktop Secret Service; see the DocC article
-[Using SwiftyChain on Linux](Sources/SwiftyChain/Documentation.docc/Articles/Linux.md) for its
-differences. Windows, Android, and WebAssembly have no backend yet: `Keychain()` uses
-`UnsupportedPlatformBackend`, which throws `platformUnsupported` from every call. A new
-platform needs only a new `SecureStorageBackend`; the public API doesn't change.
+Contract fixtures cover memory, Linux emulation, and opted-in real platform backends.
+`InMemoryKeychain(emulating: .linux)` reproduces capability restrictions without a daemon.
+Apple data-protection and access-control behavior needs a signed, entitled host; ordinary
+package tests verify query construction only. Linux daemon scenarios and WASI builds run in CI.
+`operationFailed(Int32)` retains platform-specific Security or libsecret/GLib codes.

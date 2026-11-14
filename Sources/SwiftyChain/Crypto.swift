@@ -45,23 +45,28 @@
         public let tag: String
         /// The access group for sharing across apps, or `nil` for the default group.
         public let accessGroup: String?
-        /// The accessibility policy for this item.
-        public let accessibility: KeychainAccessibility
+        /// The accessibility policy for this item, or `nil` for the platform default.
+        public let accessibility: KeychainAccessibility?
+        /// Authentication required when accessing the stored item.
+        public let accessControl: KeychainAccessControl?
 
         /// Creates a cryptographic key reference.
         ///
         /// - Parameters:
         ///   - tag: The private application tag (e.g., `"com.example.app.key-name"`).
         ///   - accessGroup: The keychain access group. Defaults to `nil`.
-        ///   - accessibility: The accessibility policy. Defaults to ``KeychainAccessibility/whenUnlocked``.
+        ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
+        ///   - accessibility: The accessibility policy. Defaults to `nil`, the platform default.
         public init(
             tag: String,
             accessGroup: String? = nil,
-            accessibility: KeychainAccessibility = .whenUnlocked
+            accessibility: KeychainAccessibility? = nil,
+            accessControl: KeychainAccessControl? = nil
         ) {
             self.tag = tag
             self.accessGroup = accessGroup
             self.accessibility = accessibility
+            self.accessControl = accessControl
         }
 
         /// Two references identify the same key when their tag and access group match.
@@ -77,15 +82,16 @@
     }
 
     extension Keychain {
-        /// Saves a cryptographic key to the keychain, replacing any existing key with the same reference.
+        /// Saves a new cryptographic key to the keychain.
         ///
-        /// If a key already exists for `keyRef` it is deleted and re-added, matching the
-        /// upsert behavior of ``Keychain/upsert(_:for:)`` for generic passwords.
+        /// Like ``Keychain/save(_:for:)``, this throws on duplicates. Use
+        /// ``upsertCryptoKey(_:for:)`` to update an existing key without deleting it.
         ///
         /// - Parameters:
         ///   - key: The ``StoredSecKey`` wrapping the `SecKey` to persist.
         ///   - keyRef: The ``CryptoKeyReference`` identifying the item.
-        /// - Throws: ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
+        /// - Throws: ``KeychainError/duplicateItem`` if a key already exists for `keyRef`,
+        ///   ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
         ///   or another ``KeychainError`` if the operation fails.
         ///
         /// ```swift
@@ -93,6 +99,15 @@
         /// ```
         public func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
             try engine.saveCryptoKey(key, for: keyRef)
+        }
+
+        /// Adds a key or updates its material in place when it already exists.
+        ///
+        /// Apple requires exportable material for an update. The macOS legacy store
+        /// rejects material updates with ``KeychainError/invalidArgument(_:)``. Unsupported updates fail
+        /// without deleting the stored key.
+        public func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
+            try engine.upsertCryptoKey(key, for: keyRef)
         }
 
         /// Loads a cryptographic key from the keychain.
@@ -113,9 +128,10 @@
 
         /// Deletes a cryptographic key from the keychain.
         ///
+        /// This is a no-op when no key exists for the reference.
+        ///
         /// - Parameter keyRef: The ``CryptoKeyReference`` identifying the item to delete.
-        /// - Throws: ``KeychainError/itemNotFound`` if no key exists for the reference,
-        ///   ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
+        /// - Throws: ``KeychainError/platformUnsupported(_:)`` if the crypto backend is unavailable,
         ///   or another ``KeychainError`` on failure.
         ///
         /// ```swift
@@ -128,35 +144,52 @@
 
     extension KeychainEngine {
         package func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
-            let cryptoBackend = try cryptoStorageBackend()
-            let query = cryptoKeyQuery(for: keyRef)
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey started for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
             )
             do {
-                try cryptoBackend.addCryptoKey(key.rawValue, query: query)
-            } catch KeychainError.duplicateItem {
-                SwiftyChainLoggers.keychain.debug(
-                    "saveCryptoKey replacing existing key for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
+                try validateCryptoReference(keyRef, writing: true)
+                try cryptoBackend().addCryptoKey(
+                    key.rawValue,
+                    query: cryptoKeyQuery(for: keyRef),
+                    attributes: CryptoKeyAttributes(
+                        accessibility: keyRef.accessibility, accessControl: keyRef.accessControl)
                 )
-                try cryptoBackend.deleteCryptoKey(query: query)
-                try cryptoBackend.addCryptoKey(key.rawValue, query: query)
+            } catch {
+                SwiftyChainLoggers.keychain.debug(
+                    "saveCryptoKey failed for tag=\(keyRef.tag, privacy: .private(mask: .hash)) error=\((error as? KeychainError)?.logName ?? "unknown", privacy: .public)"
+                )
+                throw error
             }
             SwiftyChainLoggers.keychain.debug(
                 "saveCryptoKey succeeded for tag=\(keyRef.tag, privacy: .private(mask: .hash))"
             )
         }
 
+        package func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
+            do {
+                try saveCryptoKey(key, for: keyRef)
+            } catch KeychainError.duplicateItem {
+                try validateCryptoReference(keyRef, writing: true)
+                try cryptoBackend().updateCryptoKey(
+                    key.rawValue, query: cryptoKeyQuery(for: keyRef),
+                    attributes: CryptoKeyAttributes(
+                        accessibility: keyRef.accessibility, accessControl: keyRef.accessControl))
+            }
+        }
+
         package func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey {
-            StoredSecKey(try cryptoStorageBackend().loadCryptoKey(query: cryptoKeyQuery(for: keyRef)))
+            try validateCryptoReference(keyRef)
+            return StoredSecKey(try cryptoBackend().loadCryptoKey(query: cryptoKeyQuery(for: keyRef)))
         }
 
         package func deleteCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws {
-            try cryptoStorageBackend().deleteCryptoKey(query: cryptoKeyQuery(for: keyRef))
+            try validateCryptoReference(keyRef)
+            try cryptoBackend().deleteCryptoKey(query: cryptoKeyQuery(for: keyRef))
         }
 
-        private func cryptoStorageBackend() throws -> any CryptoStorageBackend {
-            guard backend.capabilities.contains(.cryptoKeys), let cryptoBackend = backend as? any CryptoStorageBackend
+        package func cryptoBackend() throws -> any KeychainCryptoBackend {
+            guard backend.capabilities.contains(.cryptoKeys), let cryptoBackend = backend as? any KeychainCryptoBackend
             else {
                 SwiftyChainLoggers.keychain.debug("Crypto key operation requested on a backend without cryptoKeys")
                 throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
@@ -164,8 +197,15 @@
             return cryptoBackend
         }
 
+        private func validateCryptoReference(_ keyRef: CryptoKeyReference<StoredSecKey>, writing: Bool = false) throws {
+            try KeychainQueryValidator.validate(
+                KeychainQuery(itemClass: .cryptographicKey, accessGroup: keyRef.accessGroup),
+                attributes: writing ? KeychainAttributes(accessControl: keyRef.accessControl) : nil,
+                for: writing ? .add : .read, against: backend.capabilities)
+        }
+
         private func cryptoKeyQuery(for keyRef: CryptoKeyReference<StoredSecKey>) -> CryptoKeyQuery {
-            CryptoKeyQuery(tag: keyRef.tag, accessGroup: keyRef.accessGroup, accessibility: keyRef.accessibility)
+            CryptoKeyQuery(tag: keyRef.tag, accessGroup: keyRef.accessGroup)
         }
     }
 #endif

@@ -11,7 +11,7 @@ public struct KeychainKeyMacro: ExpressionMacro {
         validateRequiredStringLiteral("account", in: arguments, node: node, context: context)
         validateOptionalStringLiteral("accessGroup", in: arguments, node: node, context: context)
 
-        let accessibility = arguments.expressionText(named: "accessibility", default: ".whenUnlocked")
+        let accessibility = arguments.expressionText(named: "accessibility", default: "nil")
         let isSynchronizable = arguments.expressionText(named: "isSynchronizable", default: "false")
         if isSynchronizable == "true" && accessibility.contains("ThisDeviceOnly") {
             context.diagnose(

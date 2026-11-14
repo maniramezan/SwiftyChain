@@ -1,17 +1,11 @@
-#if os(Linux)
+#if canImport(Dispatch)
     import Dispatch
 
-    /// The serial executor every ``Keychain`` actor runs on under Linux.
+    /// The serial executor every ``Keychain`` actor uses when Dispatch is available.
     ///
-    /// libsecret's calls are synchronous and can block for up to the backend timeout,
-    /// for example while an unlock prompt is open or the keyring daemon is hung. Running
-    /// them on Swift's cooperative pool, which has one thread per core, would let a
-    /// few stuck calls stall every async task in the process. This executor moves that
-    /// blocking onto one dedicated dispatch queue instead.
-    ///
-    /// All ``Keychain`` instances share the queue. The Secret Service backend serializes
-    /// its calls process-wide anyway, so separate queues would only add threads that
-    /// wait on one another.
+    /// Security and libsecret calls block their thread while the platform keychain
+    /// responds. A dedicated serial dispatch queue keeps these calls off Swift's
+    /// cooperative pool. All ``Keychain`` instances share this queue.
     package final class KeychainExecutor: SerialExecutor {
         package static let shared = KeychainExecutor()
 

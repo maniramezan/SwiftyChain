@@ -46,23 +46,34 @@ public actor Keychain: KeychainProtocol {
 
     package let engine: KeychainEngine
 
-    package var backend: any SecureStorageBackend { engine.backend }
-
-    #if os(Linux)
-        /// On Linux, keychain work runs on a dedicated serial queue rather than Swift's
-        /// cooperative thread pool, because libsecret calls block their thread while they
-        /// wait for the keyring.
+    #if canImport(Dispatch)
+        /// Keychain calls run on a dedicated serial queue because platform storage calls block.
         public nonisolated var unownedExecutor: UnownedSerialExecutor {
             KeychainExecutor.shared.asUnownedSerialExecutor()
         }
     #endif
 
     /// Creates a new ``Keychain`` instance backed by the platform keychain.
-    public init() {
-        self.init(backend: PlatformDefaultBackend.make())
+    ///
+    /// - Parameter configuration: The macOS store selection. The legacy login keychain
+    ///   is the default. Data protection uses a separate store and requires a signed,
+    ///   entitled host. Other platforms ignore this setting.
+    public init(configuration: KeychainConfiguration = .init()) {
+        self.engine = .platformDefault(configuration: configuration)
     }
 
-    package init(backend: any SecureStorageBackend) {
+    /// Creates a ``Keychain`` that stores items in a custom ``KeychainBackend``.
+    ///
+    /// Every query is validated against the backend's
+    /// ``KeychainBackend/capabilities`` before the backend sees it, so a backend never
+    /// receives an option it declared unsupported.
+    ///
+    /// ```swift
+    /// let keychain = Keychain(backend: InMemoryKeychainBackend())
+    /// ```
+    ///
+    /// - Parameter backend: The storage that receives every keychain operation.
+    public init(backend: any KeychainBackend) {
         self.engine = KeychainEngine(backend: backend)
     }
 
@@ -307,8 +318,8 @@ public actor Keychain: KeychainProtocol {
         /// bulk-delete performed through this actor for the specified service.
         /// The stream terminates when the caller's task is cancelled.
         ///
-        /// > Note: Changes made through ``KeychainStorage`` or a different ``Keychain`` actor
-        /// > instance are not reflected in this stream.
+        /// Platform-backed instances and ``KeychainStorage`` share observers. Custom
+        /// backends have a separate registry per engine, even when the backend is shared.
         ///
         /// - Parameters:
         ///   - service: The service name to observe.
@@ -334,6 +345,13 @@ public actor Keychain: KeychainProtocol {
             accessGroup: String? = nil
         ) -> AsyncStream<KeychainChangeEvent> {
             engine.observeKeychainChanges(service: service, accessGroup: accessGroup)
+        }
+
+        /// Observes internet-password changes for a server.
+        public func observeKeychainChanges(server: String, accessGroup: String? = nil) -> AsyncStream<
+            KeychainChangeEvent
+        > {
+            engine.observeKeychainChanges(server: server, accessGroup: accessGroup)
         }
     #endif
 }

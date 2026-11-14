@@ -67,48 +67,11 @@ struct SecretServiceAttributesTests {
     func labelsDefaultToServiceAndAccount() throws {
         let generic = KeychainQuery(itemClass: .genericPassword, service: "com.example", account: "alice")
         let internet = KeychainQuery(itemClass: .internetPassword, account: "alice", server: "example.com")
-        let custom = KeychainQuery(itemClass: .genericPassword, service: "s", account: "a", label: "My token")
+        let custom = KeychainQuery(itemClass: .genericPassword, service: "s", account: "a")
 
-        #expect(try SecretServiceAttributes.label(for: generic) == "com.example (alice)")
-        #expect(try SecretServiceAttributes.label(for: internet) == "alice@example.com")
-        #expect(try SecretServiceAttributes.label(for: custom) == "My token")
-    }
-
-    @Test
-    func storedAttributesMapBackToKeychainAttributes() {
-        let attributes = SecretServiceAttributes.keychainAttributes(
-            from: ["service": "com.example", "account": "alice", "accessGroup": ""]
-        )
-
-        #expect(attributes == [.account("alice"), .service("com.example")])
-    }
-
-    @Test(
-        arguments: [
-            KeychainQuery(itemClass: .genericPassword, service: "com.example"),
-            KeychainQuery(itemClass: .genericPassword, accessGroup: "group.a"),
-            KeychainQuery(itemClass: .genericPassword, service: "", account: "token"),
-            KeychainQuery(itemClass: .internetPassword, server: "example.com"),
-            KeychainQuery(itemClass: .internetPassword, account: "alice", server: ""),
-        ]
-    )
-    func deletesNamingOneAppsItemsAreScoped(_ query: KeychainQuery) throws {
-        #expect(SecretServiceAttributes.isScopedForDeletion(try SecretServiceAttributes.matching(query)))
-    }
-
-    @Test(
-        arguments: [
-            KeychainQuery(itemClass: .genericPassword),
-            KeychainQuery(itemClass: .genericPassword, service: ""),
-            KeychainQuery(itemClass: .genericPassword, account: "token"),
-            KeychainQuery(itemClass: .genericPassword, accessGroup: ""),
-            KeychainQuery(itemClass: .genericPassword, server: "example.com"),
-            KeychainQuery(itemClass: .internetPassword, service: "com.example"),
-            KeychainQuery(itemClass: .internetPassword, account: "alice", port: 443),
-        ]
-    )
-    func deletesThatWouldMatchOtherAppsItemsAreNotScoped(_ query: KeychainQuery) throws {
-        #expect(!SecretServiceAttributes.isScopedForDeletion(try SecretServiceAttributes.matching(query)))
+        #expect(try SecretServiceAttributes.label(for: generic, custom: nil) == "com.example (alice)")
+        #expect(try SecretServiceAttributes.label(for: internet, custom: nil) == "alice@example.com")
+        #expect(try SecretServiceAttributes.label(for: custom, custom: "My token") == "My token")
     }
 
     @Test

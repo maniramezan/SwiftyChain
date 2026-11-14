@@ -20,7 +20,7 @@
             try fixture.storeAndLock()
             let keychain = Keychain(backend: fixture.backend)
 
-            await #expect(throws: KeychainError.userPresenceRequired) {
+            await #expect(throws: KeychainError.interactionNotAllowed) {
                 try await keychain.loadIfPresent(key: fixture.key)
             }
 
@@ -35,7 +35,7 @@
             try fixture.storeAndLock()
             let keychain = Keychain(backend: fixture.backend)
 
-            await #expect(throws: KeychainError.userPresenceRequired) {
+            await #expect(throws: KeychainError.interactionNotAllowed) {
                 try await keychain.update("changed", for: fixture.key)
             }
 
@@ -50,7 +50,7 @@
             try fixture.storeAndLock()
             let keychain = Keychain(backend: fixture.backend)
 
-            await #expect(throws: KeychainError.userPresenceRequired) {
+            await #expect(throws: KeychainError.interactionNotAllowed) {
                 if bulk {
                     try await keychain.deleteAll(service: fixture.key.service)
                 } else {

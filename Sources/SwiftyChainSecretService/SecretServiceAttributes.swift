@@ -75,29 +75,6 @@ package enum SecretServiceAttributes {
         return SecretServiceItemQuery(schema: schema, attributes: attributes)
     }
 
-    /// Whether a delete with these attributes is limited to one app's items.
-    ///
-    /// Every app built on SwiftyChain shares the same schemas, so a delete must name
-    /// something that belongs to the caller: a non-empty service (or server, for
-    /// internet passwords) or access group, or an exact item, meaning a service or
-    /// server together with an account. Only the schema's own attributes count,
-    /// because ``matching(_:)`` drops the rest; a generic-password query that names
-    /// only a server would otherwise match every generic password.
-    package static func isScopedForDeletion(_ query: SecretServiceItemQuery) -> Bool {
-        let primary =
-            switch query.schema {
-            case .genericPassword: query.attributes["service"]
-            case .internetPassword: query.attributes["server"]
-            }
-        if let primary, !primary.isEmpty {
-            return true
-        }
-        if let accessGroup = query.attributes["accessGroup"], !accessGroup.isEmpty {
-            return true
-        }
-        return primary != nil && query.attributes["account"] != nil
-    }
-
     /// The complete attribute set stored with a new item.
     package static func identity(for query: KeychainQuery) throws -> SecretServiceItemQuery {
         let schema = try schema(for: query.itemClass)
@@ -118,9 +95,10 @@ package enum SecretServiceAttributes {
         return SecretServiceItemQuery(schema: schema, attributes: attributes)
     }
 
-    /// The label shown for a new item in keyring managers such as Seahorse.
-    package static func label(for query: KeychainQuery) throws -> String {
-        if let label = query.label {
+    /// The label shown for a new item in keyring managers such as Seahorse: `custom` when
+    /// the caller set one, otherwise one derived from the query.
+    package static func label(for query: KeychainQuery, custom: String?) throws -> String {
+        if let label = custom {
             return label
         }
         switch try schema(for: query.itemClass) {
@@ -129,12 +107,6 @@ package enum SecretServiceAttributes {
         case .internetPassword:
             return "\(query.account ?? "")@\(query.server ?? "")"
         }
-    }
-
-    /// The attributes SwiftyChain reports for a stored item.
-    package static func keychainAttributes(from stored: [String: String]) -> [KeychainAttribute] {
-        [stored["account"].map(KeychainAttribute.account), stored["service"].map(KeychainAttribute.service)]
-            .compactMap { $0 }
     }
 
     // These strings are persisted in users' keyrings. Never change an existing value.

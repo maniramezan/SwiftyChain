@@ -44,12 +44,11 @@
                     let query = KeychainQuery(
                         itemClass: .genericPassword,
                         service: "tests.timeout.queued",
-                        account: "a\(index)",
-                        returnData: true
+                        account: "a\(index)"
                     )
                     var outcome: KeychainError?
                     do {
-                        _ = try backend.copyMatching(query)
+                        _ = try backend.data(matching: query)
                     } catch let error as KeychainError {
                         outcome = error
                     } catch {

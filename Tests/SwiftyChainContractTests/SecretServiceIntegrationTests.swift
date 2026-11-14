@@ -45,7 +45,7 @@
             try await keychain.save("kept", for: kept)
             defer { Self.cleanUp(service: service) }
             let unscoped = KeychainError.platformUnsupported(
-                "Deleting without a service, server, or access group is not supported by the Secret Service backend"
+                "Deleting without a service, server, or access group is not supported by this keychain backend"
             )
 
             await #expect(throws: unscoped) {
@@ -143,53 +143,4 @@
         }
     }
 
-    @Suite("Keychain executor on Linux")
-    struct KeychainExecutorTests {
-        @Test
-        func keychainWorkRunsOffTheCooperativePool() async throws {
-            let probe = ExecutorProbeBackend()
-            let keychain = Keychain(backend: probe)
-            let key = KeychainKey<String>(service: "tests.executor", account: "a")
-
-            try await keychain.save("value", for: key)
-            _ = try await keychain.loadIfPresent(key: key)
-            try await keychain.delete(key: key)
-
-            #expect(probe.ranOnKeychainExecutor)
-            #expect(!KeychainExecutor.isCurrent)
-        }
-    }
-
-    /// Records whether backend calls arrive on ``KeychainExecutor``'s queue.
-    private final class ExecutorProbeBackend: SecureStorageBackend, @unchecked Sendable {
-        let capabilities: SecureStorageCapabilities = []
-        private let lock = NSLock()
-        private var observed = true
-
-        var ranOnKeychainExecutor: Bool {
-            lock.withLock { observed }
-        }
-
-        func add(_ query: KeychainQuery, data: Data) throws {
-            record()
-        }
-
-        func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-            record()
-            throw KeychainError.itemNotFound
-        }
-
-        func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
-            record()
-        }
-
-        func delete(matching query: KeychainQuery) throws {
-            record()
-        }
-
-        private func record() {
-            let isCurrent = KeychainExecutor.isCurrent
-            lock.withLock { observed = observed && isCurrent }
-        }
-    }
 #endif

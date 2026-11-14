@@ -3,10 +3,8 @@ import Synchronization
 
 /// Synchronous, `@AppStorage`-shaped access to a single optional keychain value.
 ///
-/// Reads and writes go directly to the keychain (not through the ``Keychain`` actor),
-/// so writes through `@KeychainStorage` do **not** emit observation events from
-/// ``Keychain/observeKeychainChanges(service:accessGroup:)``. Use ``Keychain/shared``
-/// directly when you need change notifications.
+/// Reads and writes run synchronously on the caller's thread, outside the ``Keychain``
+/// actor, through the same engine and validation as ``Keychain``.
 ///
 /// The projected value (`$property`) exposes the last ``KeychainError``, if any.
 /// Both the wrapped getter and setter are non-mutating, so the wrapper can be
@@ -14,7 +12,7 @@ import Synchronization
 @propertyWrapper
 public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     private let key: KeychainKey<Value>
-    private let backend: any KeychainBackend
+    private let engine: KeychainEngine
     private let errorBox: ErrorBox
 
     /// The last ``KeychainError`` that occurred during a get or set, or `nil` if the last operation succeeded.
@@ -39,42 +37,56 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     ///   - account: The account identifier for this keychain item.
     ///   - service: The service name that groups related items (e.g., your app's bundle ID).
     ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
-    ///   - accessibility: Controls when the item is accessible. Defaults to ``KeychainAccessibility/whenUnlocked``.
+    ///   - accessibility: Controls when the item is accessible. Defaults to `nil`, which uses
+    ///     the platform default for a new item and keeps an existing item's policy.
+    ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
     ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
     ///     Apple platforms only; on Linux, `true` makes operations throw ``KeychainError/platformUnsupported(_:)``.
+    ///   - configuration: Selects the macOS store. Defaults to the legacy login keychain.
     public init(
         _ account: String,
         service: String,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility = .whenUnlocked,
-        isSynchronizable: Bool = false
+        accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
+        isSynchronizable: Bool = false,
+        configuration: KeychainConfiguration = .init()
     ) {
-        self.init(
-            account,
-            service: service,
-            backend: SecureStorageKeychainBackend(PlatformDefaultBackend.make()),
-            accessGroup: accessGroup,
-            accessibility: accessibility,
-            isSynchronizable: isSynchronizable
-        )
+        self.key = KeychainKey(
+            service: service, account: account, accessGroup: accessGroup,
+            accessibility: accessibility, accessControl: accessControl, isSynchronizable: isSynchronizable)
+        self.engine = .platformDefault(configuration: configuration)
+        self.errorBox = ErrorBox()
     }
 
+    /// Creates a property wrapper that stores its value in a custom ``KeychainBackend``.
+    ///
+    /// - Parameters:
+    ///   - account: The account identifier for this keychain item.
+    ///   - service: The service name that groups related items.
+    ///   - backend: The storage that receives every read and write, such as
+    ///     `InMemoryKeychainBackend` in tests.
+    ///   - accessGroup: The access group for sharing across apps. Defaults to `nil`.
+    ///   - accessibility: Controls when the item is accessible. Defaults to `nil`, the platform default.
+    ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
+    ///   - isSynchronizable: Pass `true` to sync this item via iCloud Keychain. Defaults to `false`.
     public init(
         _ account: String,
         service: String,
         backend: any KeychainBackend,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility = .whenUnlocked,
+        accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
         isSynchronizable: Bool = false
     ) {
         self.key = KeychainKey(
             service: service,
             account: account,
             accessGroup: accessGroup,
-            accessibility: accessibility,
+            accessibility: accessibility, accessControl: accessControl,
             isSynchronizable: isSynchronizable
         )
-        self.backend = backend
+        self.engine = KeychainEngine(backend: backend)
         self.errorBox = ErrorBox()
     }
 
@@ -87,106 +99,20 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
     /// If an error occurs during get or set, it is captured in ``projectedValue``.
     public var wrappedValue: Value? {
         get {
-            do {
-                let data = try backend.load(
-                    service: key.service,
-                    account: key.account,
-                    accessGroup: key.accessGroup,
-                    isSynchronizable: key.isSynchronizable
-                )
-                errorBox.value = nil
-                return try Value.fromKeychainData(data)
-            } catch KeychainError.itemNotFound {
-                SwiftyChainLoggers.storage.debug(
-                    "KeychainStorage load returned item not found for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                )
-                errorBox.value = nil
-                return nil
-            } catch let error as KeychainError {
-                if error.isExpectedOutcome {
-                    SwiftyChainLoggers.storage.debug(
-                        "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                    )
-                } else {
-                    SwiftyChainLoggers.storage.error(
-                        "KeychainStorage load failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                    )
-                }
-                errorBox.value = error
-                return nil
-            } catch {
-                SwiftyChainLoggers.storage.error(
-                    "KeychainStorage load failed with unexpected error for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                )
-                errorBox.value = .unexpectedData
-                return nil
-            }
+            let result = Result { try engine.loadIfPresent(key: key) }
+            errorBox.record(result)
+            return try? result.get()
         }
         nonmutating set {
-            let result = Result<Void, any Error> {
-                if let newValue {
-                    SwiftyChainLoggers.storage.debug(
-                        "KeychainStorage save started for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                    )
-                    let data = try newValue.keychainData()
-                    do {
-                        try backend.save(
-                            data,
-                            service: key.service,
-                            account: key.account,
-                            accessGroup: key.accessGroup,
-                            accessibility: key.accessibility,
-                            isSynchronizable: key.isSynchronizable,
-                            label: key.label,
-                            comment: key.comment
-                        )
-                    } catch KeychainError.duplicateItem {
-                        SwiftyChainLoggers.storage.debug(
-                            "KeychainStorage save found duplicate item; updating instead for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                        )
-                        try backend.update(
-                            data,
-                            service: key.service,
-                            account: key.account,
-                            accessGroup: key.accessGroup,
-                            accessibility: key.accessibility,
-                            isSynchronizable: key.isSynchronizable,
-                            label: key.label,
-                            comment: key.comment
-                        )
+            errorBox.record(
+                Result {
+                    if let newValue {
+                        try engine.upsert(newValue, for: key)
+                    } else {
+                        try engine.delete(key: key)
                     }
-                } else {
-                    SwiftyChainLoggers.storage.debug(
-                        "KeychainStorage delete started for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                    )
-                    try backend.delete(
-                        service: key.service,
-                        account: key.account,
-                        accessGroup: key.accessGroup,
-                        isSynchronizable: key.isSynchronizable
-                    )
                 }
-            }
-            switch result {
-            case .success:
-                errorBox.value = nil
-            case .failure(let error as KeychainError):
-                if error.isExpectedOutcome {
-                    SwiftyChainLoggers.storage.debug(
-                        "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                    )
-                } else {
-                    SwiftyChainLoggers.storage.error(
-                        "KeychainStorage write failed for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash)) error=\(error.logName, privacy: .public)"
-                    )
-                }
-                errorBox.value = error
-            case .failure:
-                SwiftyChainLoggers.storage.error(
-                    "KeychainStorage write failed with unexpected error for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                )
-                errorBox.value = .unexpectedData
-            }
+            )
         }
     }
 
@@ -194,8 +120,20 @@ public struct KeychainStorage<Value: KeychainStorable>: Sendable {
         private let storage = Mutex<KeychainError?>(nil)
 
         var value: KeychainError? {
-            get { storage.withLock { $0 } }
-            set { storage.withLock { $0 = newValue } }
+            storage.withLock { $0 }
+        }
+
+        // The engine has already logged the failure. An error that isn't a
+        // KeychainError, such as one thrown by a custom KeychainStorable, is
+        // reported as unexpected data.
+        func record<Success>(_ result: Result<Success, any Error>) {
+            let error: KeychainError? =
+                switch result {
+                case .success: nil
+                case .failure(let error as KeychainError): error
+                case .failure: .unexpectedData
+                }
+            storage.withLock { $0 = error }
         }
     }
 }

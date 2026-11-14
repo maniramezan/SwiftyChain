@@ -59,6 +59,7 @@ Enable traits by passing them to the product dependency:
 ### Essentials
 
 - <doc:GettingStarted>
+- <doc:MigratingTo2>
 - ``Keychain``
 - ``KeychainKey``
 
@@ -92,6 +93,8 @@ Enable traits by passing them to the product dependency:
 ### Accessibility and Security
 
 - ``KeychainAccessibility``
+- ``KeychainAccessControl``
+- ``KeychainConfiguration``
 
 ### Bulk Deletion
 
@@ -114,6 +117,9 @@ Enable traits by passing them to the product dependency:
 
 - ``KeychainProtocol``
 - ``KeychainBackend``
+- ``KeychainBackendCapabilities``
+- ``KeychainQuery``
+- ``KeychainAttributes``
 
 ### Test Support
 

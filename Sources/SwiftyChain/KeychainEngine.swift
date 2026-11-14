@@ -3,16 +3,34 @@ import Foundation
 /// The platform-neutral implementation behind ``Keychain`` and `InMemoryKeychain`.
 ///
 /// The engine turns public operations into ``KeychainQuery`` values, validates them
-/// against the backend's capabilities, calls the ``SecureStorageBackend``, and emits
+/// against the backend's capabilities, calls the ``KeychainBackend``, and emits
 /// observation events. Every backend shares this logic, so they behave the same.
 package struct KeychainEngine: Sendable {
-    package let backend: any SecureStorageBackend
+    package let backend: any KeychainBackend
     #if Observation
-        private let observers = KeychainObserverRegistry()
+        private let observers: KeychainObserverRegistry
     #endif
 
-    package init(backend: any SecureStorageBackend) {
+    package init(backend: any KeychainBackend) {
         self.backend = backend
+        #if Observation
+            self.observers = KeychainObserverRegistry()
+        #endif
+    }
+
+    #if Observation
+        package init(backend: any KeychainBackend, observers: KeychainObserverRegistry) {
+            self.backend = backend
+            self.observers = observers
+        }
+    #endif
+
+    package static func platformDefault(configuration: KeychainConfiguration = .init()) -> Self {
+        #if Observation
+            Self(backend: PlatformDefaultBackend.make(configuration: configuration), observers: .platformDefault)
+        #else
+            Self(backend: PlatformDefaultBackend.make(configuration: configuration))
+        #endif
     }
 
     package func save<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
@@ -29,13 +47,7 @@ package struct KeychainEngine: Sendable {
     package func load<T: KeychainStorable>(key: KeychainKey<T>) throws -> T {
         logKeychainOperationStarted("load", service: key.service, account: key.account)
         do {
-            let result = try backend.copyMatching(validated(identityQuery(for: key, returnData: true)))
-            guard case .data(let data) = result else {
-                SwiftyChainLoggers.keychain.error(
-                    "load returned unexpected result for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                )
-                throw KeychainError.unexpectedData
-            }
+            let data = try backend.data(matching: validated(identityQuery(for: key), for: .read))
             return try T.fromKeychainData(data)
         } catch KeychainError.itemNotFound {
             SwiftyChainLoggers.keychain.debug(
@@ -62,14 +74,10 @@ package struct KeychainEngine: Sendable {
     package func update<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
         logKeychainOperationStarted("update", service: key.service, account: key.account)
         do {
+            let attributes = try writeAttributes(value, for: key)
             try backend.update(
-                matching: validated(identityQuery(for: key)),
-                to: KeychainAttributes(
-                    data: try value.keychainData(),
-                    label: key.label,
-                    comment: key.comment,
-                    accessibility: key.accessibility
-                )
+                matching: validated(identityQuery(for: key), attributes: attributes, for: .update),
+                to: attributes
             )
             notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .updated)
             logKeychainOperationSucceeded("update", service: key.service, account: key.account)
@@ -99,7 +107,7 @@ package struct KeychainEngine: Sendable {
     package func delete<T: KeychainStorable>(key: KeychainKey<T>) throws {
         logKeychainOperationStarted("delete", service: key.service, account: key.account)
         do {
-            try backend.delete(matching: validated(identityQuery(for: key)))
+            try backend.delete(matching: validated(identityQuery(for: key), for: .delete))
             notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("delete", service: key.service, account: key.account)
         } catch {
@@ -119,23 +127,41 @@ package struct KeychainEngine: Sendable {
             }
         logBulkDeleteStarted(query: query)
         do {
-            // Internet passwords use kSecAttrServer, not kSecAttrService.
-            let keychainQuery =
-                query.itemClass == .internetPassword
-                ? KeychainQuery(
-                    itemClass: query.itemClass,
-                    accessGroup: query.accessGroup,
-                    server: query.service
+            switch query.itemClass.kind {
+            case .cryptographicKey:
+                try deleteAllCryptoKeys(matching: query)
+            case .genericPassword:
+                try backend.delete(
+                    matching: validated(
+                        KeychainQuery(
+                            itemClass: query.itemClass,
+                            service: query.service,
+                            accessGroup: query.accessGroup,
+                            isSynchronizable: isSynchronizable
+                        ),
+                        for: .delete
+                    )
                 )
-                : KeychainQuery(
-                    itemClass: query.itemClass,
-                    service: query.service,
-                    accessGroup: query.accessGroup,
-                    isSynchronizable: isSynchronizable
+            case .internetPassword:
+                // An internet password's equivalent of a service is its server.
+                try backend.delete(
+                    matching: validated(
+                        KeychainQuery(
+                            itemClass: query.itemClass,
+                            accessGroup: query.accessGroup,
+                            isSynchronizable: isSynchronizable,
+                            server: query.service
+                        ),
+                        for: .delete
+                    )
                 )
-            try backend.delete(matching: validated(keychainQuery))
+            }
             if let service = query.service {
-                notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
+                if query.itemClass == .internetPassword {
+                    notify(server: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
+                } else {
+                    notify(service: service, account: nil, accessGroup: query.accessGroup, kind: .bulkDeleted)
+                }
             }
             logBulkDeleteSucceeded(query: query)
         } catch {
@@ -146,13 +172,13 @@ package struct KeychainEngine: Sendable {
 
     package func exists<T: KeychainStorable>(key: KeychainKey<T>) throws -> Bool {
         do {
-            _ = try backend.copyMatching(validated(identityQuery(for: key)))
-            return true
-        } catch KeychainError.itemNotFound {
-            SwiftyChainLoggers.keychain.debug(
-                "exists returned false for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-            )
-            return false
+            let exists = try backend.contains(matching: validated(identityQuery(for: key), for: .read))
+            if !exists {
+                SwiftyChainLoggers.keychain.debug(
+                    "exists returned false for service=\(key.service, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
+                )
+            }
+            return exists
         } catch {
             logKeychainOperationFailed("exists", service: key.service, account: key.account, error: error)
             throw error
@@ -160,45 +186,36 @@ package struct KeychainEngine: Sendable {
     }
 
     package func allAccounts(service: String, accessGroup: String?) throws -> [String] {
-        let result: KeychainQueryResult
+        SwiftyChainLoggers.keychain.debug(
+            "allAccounts started for service=\(service, privacy: .private(mask: .hash))"
+        )
         do {
-            result = try backend.copyMatching(
-                validated(
-                    KeychainQuery(
-                        itemClass: .genericPassword,
-                        service: service,
-                        accessGroup: accessGroup,
-                        returnAttributes: true,
-                        matchLimit: .all
-                    )
+            let accounts = try backend.accounts(
+                matching: validated(
+                    KeychainQuery(itemClass: .genericPassword, service: service, accessGroup: accessGroup),
+                    for: .read
                 )
             )
-        } catch KeychainError.itemNotFound {
             SwiftyChainLoggers.keychain.debug(
-                "allAccounts returned no items for service=\(service, privacy: .private(mask: .hash))"
+                "allAccounts found count=\(accounts.count, privacy: .public) for service=\(service, privacy: .private(mask: .hash))"
             )
-            return []
-        }
-        guard case .items(let items) = result else {
-            SwiftyChainLoggers.keychain.error(
-                "allAccounts returned unexpected result for service=\(service, privacy: .private(mask: .hash))"
-            )
-            throw KeychainError.unexpectedData
-        }
-        return items.compactMap { item in
-            guard case .attributes(let attributes) = item else { return nil }
-            return attributes.compactMap { attribute in
-                if case .account(let account) = attribute { return account }
-                return nil
-            }.first
+            return accounts
+        } catch {
+            logKeychainOperationFailed("allAccounts", service: service, account: nil, error: error)
+            throw error
         }
     }
 
     package func saveInternetPassword(_ password: String, for key: InternetPasswordKey) throws {
         logKeychainOperationStarted("saveInternetPassword", service: key.server, account: key.account)
         do {
-            try backend.add(validated(internetAddQuery(for: key)), data: password.keychainData())
-            notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
+            let attributes = KeychainAttributes(
+                data: try password.keychainData(), accessibility: key.accessibility, accessControl: key.accessControl)
+            try backend.add(
+                validated(internetIdentityQuery(for: key), attributes: attributes, for: .add),
+                attributes: attributes
+            )
+            notify(server: key.server, account: key.account, accessGroup: key.accessGroup, kind: .saved)
             logKeychainOperationSucceeded("saveInternetPassword", service: key.server, account: key.account)
         } catch {
             logKeychainOperationFailed("saveInternetPassword", service: key.server, account: key.account, error: error)
@@ -209,13 +226,7 @@ package struct KeychainEngine: Sendable {
     package func loadInternetPassword(for key: InternetPasswordKey) throws -> String {
         logKeychainOperationStarted("loadInternetPassword", service: key.server, account: key.account)
         do {
-            let result = try backend.copyMatching(validated(internetIdentityQuery(for: key, returnData: true)))
-            guard case .data(let data) = result else {
-                SwiftyChainLoggers.keychain.error(
-                    "loadInternetPassword returned unexpected result for server=\(key.server, privacy: .private(mask: .hash)) account=\(key.account, privacy: .private(mask: .hash))"
-                )
-                throw KeychainError.unexpectedData
-            }
+            let data = try backend.data(matching: validated(internetIdentityQuery(for: key), for: .read))
             return try String.fromKeychainData(data)
         } catch KeychainError.itemNotFound {
             SwiftyChainLoggers.keychain.debug(
@@ -231,8 +242,8 @@ package struct KeychainEngine: Sendable {
     package func deleteInternetPassword(for key: InternetPasswordKey) throws {
         logKeychainOperationStarted("deleteInternetPassword", service: key.server, account: key.account)
         do {
-            try backend.delete(matching: validated(internetIdentityQuery(for: key)))
-            notify(service: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
+            try backend.delete(matching: validated(internetIdentityQuery(for: key), for: .delete))
+            notify(server: key.server, account: key.account, accessGroup: key.accessGroup, kind: .deleted)
             logKeychainOperationSucceeded("deleteInternetPassword", service: key.server, account: key.account)
         } catch {
             logKeychainOperationFailed(
@@ -250,11 +261,21 @@ package struct KeychainEngine: Sendable {
             observers.register(service: service, accessGroup: accessGroup)
         }
 
+        package func observeKeychainChanges(server: String, accessGroup: String?) -> AsyncStream<KeychainChangeEvent> {
+            observers.register(server: server, accessGroup: accessGroup)
+        }
+
+        private func notify(server: String, account: String?, accessGroup: String?, kind: KeychainChangeEvent.Kind) {
+            observers.emit(KeychainChangeEvent(server: server, account: account, kind: kind), accessGroup: accessGroup)
+        }
+
         private func notify(service: String, account: String?, accessGroup: String?, kind: KeychainChangeEvent.Kind) {
             observers.emit(
                 KeychainChangeEvent(service: service, account: account, kind: kind), accessGroup: accessGroup)
         }
     #else
+        private func notify(server: String, account: String?, accessGroup: String?, kind: MutationKind) {}
+
         private func notify(service: String, account: String?, accessGroup: String?, kind: MutationKind) {}
 
         private enum MutationKind {
@@ -268,69 +289,82 @@ package struct KeychainEngine: Sendable {
     // Shared by save and upsert. Logging is left to the caller so an upsert
     // that hits an existing item does not report a failed save.
     private func add<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws {
-        try backend.add(validated(addQuery(for: key)), data: value.keychainData())
+        let attributes = try writeAttributes(value, for: key)
+        try backend.add(validated(identityQuery(for: key), attributes: attributes, for: .add), attributes: attributes)
         notify(service: key.service, account: key.account, accessGroup: key.accessGroup, kind: .saved)
     }
 
-    private func validated(_ query: KeychainQuery) throws -> KeychainQuery {
-        try SecureStorageQueryValidator.validate(query, against: backend.capabilities)
+    // Cryptographic keys live behind KeychainCryptoBackend and have no service, so a
+    // bulk delete of them selects keys by access group alone.
+    private func deleteAllCryptoKeys(matching query: KeychainDeleteQuery) throws {
+        _ = try validated(KeychainQuery(itemClass: query.itemClass, accessGroup: query.accessGroup), for: .delete)
+        if query.service != nil {
+            throw invalidArgument(
+                "Cryptographic keys have no service. Delete them by access group, or pass no service"
+            )
+        }
+        if query.onlySynchronizable {
+            throw invalidArgument("SwiftyChain stores cryptographic keys as local items, so none are synchronizable")
+        }
+        #if Cryptography && canImport(Security)
+            try cryptoBackend().deleteAllCryptoKeys(accessGroup: query.accessGroup)
+        #else
+            SwiftyChainLoggers.keychain.debug("Crypto key bulk delete requested without a crypto backend")
+            throw KeychainError.platformUnsupported("Cryptographic keys are not supported by this keychain backend")
+        #endif
+    }
+
+    package func invalidArgument(_ message: String) -> KeychainError {
+        SwiftyChainLoggers.keychain.debug("Rejected invalid argument: \(message, privacy: .public)")
+        return .invalidArgument(message)
+    }
+
+    private func validated(
+        _ query: KeychainQuery,
+        attributes: KeychainAttributes? = nil,
+        for operation: KeychainOperation
+    ) throws -> KeychainQuery {
+        if query.isSynchronizable == true, attributes?.accessibility?.isThisDeviceOnly == true {
+            throw invalidArgument("A synchronizable item can't use a ThisDeviceOnly accessibility")
+        }
+        if query.isSynchronizable == true, attributes?.accessControl != nil {
+            throw invalidArgument("A synchronizable item can't use access control")
+        }
+        try KeychainQueryValidator.validate(
+            query, attributes: attributes, for: operation, against: backend.capabilities)
         return query
     }
 
-    // Identity-only query: the attributes a backend uses to match an existing
-    // item (class + service + account + accessGroup + synchronizable).
-    private func identityQuery<T: KeychainStorable>(
-        for key: KeychainKey<T>,
-        returnData: Bool = false
-    ) -> KeychainQuery {
+    // The attributes a backend uses to match an existing item: class, service,
+    // account, access group, and synchronizable. Writes go in `writeAttributes`.
+    private func identityQuery<T: KeychainStorable>(for key: KeychainKey<T>) -> KeychainQuery {
         KeychainQuery(
             itemClass: .genericPassword,
             service: key.service,
             account: key.account,
             accessGroup: key.accessGroup,
-            isSynchronizable: key.isSynchronizable,
-            returnData: returnData
+            isSynchronizable: key.isSynchronizable
         )
     }
 
-    // Full query for adding an item: writes accessibility, label, and comment as
-    // attributes alongside the identity fields.
-    private func addQuery<T: KeychainStorable>(for key: KeychainKey<T>) -> KeychainQuery {
-        KeychainQuery(
-            itemClass: .genericPassword,
-            service: key.service,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            accessibility: key.accessibility,
-            isSynchronizable: key.isSynchronizable,
+    private func writeAttributes<T: KeychainStorable>(_ value: T, for key: KeychainKey<T>) throws
+        -> KeychainAttributes
+    {
+        KeychainAttributes(
+            data: try value.keychainData(),
             label: key.label,
-            comment: key.comment
-        )
-    }
-
-    private func internetIdentityQuery(
-        for key: InternetPasswordKey,
-        returnData: Bool = false
-    ) -> KeychainQuery {
-        KeychainQuery(
-            itemClass: .internetPassword,
-            account: key.account,
-            accessGroup: key.accessGroup,
-            returnData: returnData,
-            server: key.server,
-            port: key.port,
-            path: key.path,
-            internetProtocol: key.protocol,
-            authenticationType: key.authenticationType
-        )
-    }
-
-    private func internetAddQuery(for key: InternetPasswordKey) -> KeychainQuery {
-        KeychainQuery(
-            itemClass: .internetPassword,
-            account: key.account,
-            accessGroup: key.accessGroup,
+            comment: key.comment,
             accessibility: key.accessibility,
+            accessControl: key.accessControl
+        )
+    }
+
+    private func internetIdentityQuery(for key: InternetPasswordKey) -> KeychainQuery {
+        KeychainQuery(
+            itemClass: .internetPassword,
+            account: key.account,
+            accessGroup: key.accessGroup,
+            isSynchronizable: key.isSynchronizable,
             server: key.server,
             port: key.port,
             path: key.path,

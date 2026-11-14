@@ -1,102 +1,91 @@
 import Foundation
 
-/// How many items a ``KeychainQuery`` returns from `copyMatching`.
-package enum MatchLimit: Sendable, Hashable {
-    case one
-    case all
-}
-
-/// An attribute a backend reports for a matched item.
-package enum KeychainAttribute: Sendable, Hashable {
-    case account(String)
-    case service(String)
-}
-
-/// A platform-neutral description of the items a backend operation targets.
+/// A platform-neutral description of the items a ``KeychainBackend`` operation targets.
 ///
-/// A `nil` attribute places no constraint on matching items. When adding an item,
-/// `nil` means the item is stored without that attribute.
-package struct KeychainQuery: Sendable, Hashable {
-    package let itemClass: KeychainItemClass
-    package let service: String?
-    package let account: String?
-    package let accessGroup: String?
-    package let accessibility: KeychainAccessibility?
-    package let isSynchronizable: Bool?
-    package let returnData: Bool
-    package let returnAttributes: Bool
-    package let matchLimit: MatchLimit
-    package let server: String?
-    package let port: Int?
-    package let path: String?
-    package let internetProtocol: InternetProtocol?
-    package let authenticationType: AuthenticationType?
-    package let label: String?
-    package let comment: String?
+/// A query only selects items. Values that are written, such as the secret itself, a
+/// label, or an accessibility policy, travel separately in ``KeychainAttributes``.
+///
+/// A `nil` attribute places no constraint on matching items, and `isSynchronizable == nil`
+/// matches both synchronizable and local items. When ``KeychainBackend/add(_:attributes:)``
+/// receives a query, `nil` means the item is stored without that attribute, and a `nil`
+/// `isSynchronizable` stores a local item.
+public struct KeychainQuery: Sendable, Hashable {
+    /// The item class to match.
+    public let itemClass: KeychainItemClass
+    /// The service of a generic password.
+    public let service: String?
+    /// The account of a generic or internet password.
+    public let account: String?
+    /// The access group the item belongs to.
+    public let accessGroup: String?
+    /// Whether the item syncs through iCloud Keychain, or `nil` to match either.
+    public let isSynchronizable: Bool?
+    /// The server of an internet password.
+    public let server: String?
+    /// The port of an internet password.
+    public let port: Int?
+    /// The path of an internet password.
+    public let path: String?
+    /// The protocol of an internet password.
+    public let internetProtocol: InternetProtocol?
+    /// The authentication type of an internet password.
+    public let authenticationType: AuthenticationType?
 
-    package init(
+    /// Creates a query. Every attribute defaults to `nil`, which matches any value.
+    public init(
         itemClass: KeychainItemClass = .genericPassword,
         service: String? = nil,
         account: String? = nil,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility? = nil,
         isSynchronizable: Bool? = nil,
-        returnData: Bool = false,
-        returnAttributes: Bool = false,
-        matchLimit: MatchLimit = .one,
         server: String? = nil,
         port: Int? = nil,
         path: String? = nil,
         internetProtocol: InternetProtocol? = nil,
-        authenticationType: AuthenticationType? = nil,
-        label: String? = nil,
-        comment: String? = nil
+        authenticationType: AuthenticationType? = nil
     ) {
         self.itemClass = itemClass
         self.service = service
         self.account = account
         self.accessGroup = accessGroup
-        self.accessibility = accessibility
         self.isSynchronizable = isSynchronizable
-        self.returnData = returnData
-        self.returnAttributes = returnAttributes
-        self.matchLimit = matchLimit
         self.server = server
         self.port = port
         self.path = path
         self.internetProtocol = internetProtocol
         self.authenticationType = authenticationType
-        self.label = label
-        self.comment = comment
     }
 }
 
-/// The new values an `update` writes. `nil` leaves the stored value unchanged.
-package struct KeychainAttributes: Sendable, Hashable {
-    package let data: Data?
-    package let label: String?
-    package let comment: String?
-    package let accessibility: KeychainAccessibility?
+/// The values ``KeychainBackend/add(_:attributes:)`` stores and
+/// ``KeychainBackend/update(matching:to:)`` writes.
+///
+/// On `update`, a `nil` value leaves the stored value unchanged. On `add`, a `nil` value
+/// stores the platform default, and ``data`` is always set.
+public struct KeychainAttributes: Sendable, Hashable {
+    /// The secret.
+    public let data: Data?
+    /// A human-readable label.
+    public let label: String?
+    /// A human-readable comment.
+    public let comment: String?
+    /// When the item can be read.
+    public let accessibility: KeychainAccessibility?
+    /// Authentication required when accessing the stored item.
+    public let accessControl: KeychainAccessControl?
 
-    package init(
-        data: Data?,
-        label: String?,
-        comment: String?,
-        accessibility: KeychainAccessibility?
+    /// Creates a set of attributes. Every value defaults to `nil`.
+    public init(
+        data: Data? = nil,
+        label: String? = nil,
+        comment: String? = nil,
+        accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil
     ) {
         self.data = data
         self.label = label
         self.comment = comment
         self.accessibility = accessibility
+        self.accessControl = accessControl
     }
-}
-
-/// The result of `copyMatching`.
-///
-/// A `.one` query returns ``data(_:)`` when it requests data, otherwise ``attributes(_:)``.
-/// An `.all` query returns ``items(_:)`` holding one ``attributes(_:)`` entry per match.
-package enum KeychainQueryResult: Sendable, Hashable {
-    case data(Data)
-    case attributes([KeychainAttribute])
-    case items([KeychainQueryResult])
 }

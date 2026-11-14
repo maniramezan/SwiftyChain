@@ -14,7 +14,7 @@ public macro keychainKey<Value: KeychainStorable>(
     service: String,
     account: String,
     accessGroup: String? = nil,
-    accessibility: KeychainAccessibility = .whenUnlocked,
+    accessibility: KeychainAccessibility? = nil,
     isSynchronizable: Bool = false,
     label: String? = nil,
     comment: String? = nil
@@ -50,7 +50,7 @@ public macro KeychainItem(
     _ account: String,
     service: String? = nil,
     accessGroup: String? = nil,
-    accessibility: KeychainAccessibility = .whenUnlocked,
+    accessibility: KeychainAccessibility? = nil,
     isSynchronizable: Bool = false,
     label: String? = nil,
     comment: String? = nil
