@@ -22,4 +22,14 @@ public enum KeychainAccessibility: Sendable, Hashable {
     ///
     /// The item is deleted if the user removes their passcode. Implies device-only storage.
     case whenPasscodeSetThisDeviceOnly
+
+    /// Whether the policy keeps the item on this device, which rules out iCloud Keychain sync.
+    package var isThisDeviceOnly: Bool {
+        switch self {
+        case .afterFirstUnlock, .whenUnlocked:
+            false
+        case .afterFirstUnlockThisDeviceOnly, .whenUnlockedThisDeviceOnly, .whenPasscodeSetThisDeviceOnly:
+            true
+        }
+    }
 }

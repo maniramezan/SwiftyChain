@@ -96,6 +96,7 @@ Behavior that differs from Apple platforms:
 | `isSynchronizable: true` | Throws `platformUnsupported` |
 | `accessGroup` | Stored as an attribute; namespaces items but doesn't isolate them |
 | `accessibility`, `comment` | Not stored |
+| `accessControl` | Throws `platformUnsupported` |
 | `cryptography` trait | Unavailable (it stores Apple `SecKey` values) |
 | Unresponsive keyring or unanswered unlock prompt | Throws `KeychainError.timedOut` after 30 seconds per keyring request (an `upsert` of an existing item makes two) |
 | Two processes saving the same item | Last write wins; Apple throws `duplicateItem` for the second save. Within one process, `duplicateItem` is thrown as on Apple |
@@ -108,6 +109,31 @@ Behavior that differs from Apple platforms:
 > keyring schemas. Flatpak and Snap apps can get per-app storage: with libsecret 0.20+
 > (built with crypto support) and a Secret portal on the host, libsecret keeps their
 > secrets in an app-private file encrypted with a key from the portal.
+
+## macOS stores and access control
+
+`Keychain.shared` and `Keychain()` use the legacy login keychain. It can ignore accessibility
+policies and display blocking ACL prompts. Opt in to the data-protection store explicitly:
+
+```swift
+let keychain = Keychain(configuration: .init(macOSStore: .dataProtection))
+let key = KeychainKey<String>(
+    service: "com.example.app", account: "token",
+    accessibility: .whenUnlockedThisDeviceOnly, accessControl: .userPresence)
+try await keychain.upsert("secret", for: key)
+```
+
+The data-protection store needs a signed, entitled host and does not migrate legacy items.
+Access control supports user presence, biometry any/current set, and device passcode through
+the system prompt. Linux, tvOS, and the macOS legacy store reject it. `KeychainStorage` also
+accepts `configuration:` and `accessControl:`.
+
+Version 2.0 makes accessibility optional, preserves it on updates when omitted, and excludes
+write policy from key identity. `saveCryptoKey` now throws on duplicates; `upsertCryptoKey`
+updates without deleting and rejects a replacement of a different key type, class, or size.
+Legacy macOS crypto material replacements are rejected; use the
+data-protection store. See [Migrating to 2.0](Sources/SwiftyChain/Documentation.docc/Articles/MigratingTo2.md)
+for backend, error, and observation changes.
 
 ## Traits
 
@@ -132,7 +158,7 @@ xcrun swift test --traits "observation,cryptography"
 
 ## @KeychainStorage Limitations
 
-`@KeychainStorage` is synchronous and safe for `@MainActor`-isolated types (comparable cost to a UserDefaults read). **Do not use it for items with accessibility settings that may trigger user-interaction prompts** — keychain calls run on the calling thread and can block it. Use the async `Keychain` actor for those items instead.
+`@KeychainStorage` uses the same engine and validation as `Keychain`, and platform-backed writes reach observers of the same store. It is synchronous and can block its calling thread for keychain interaction. Prefer the async actor for protected items. Each actor instance runs its calls on its own serial dispatch queue on Apple and Linux; on Linux, Secret Service calls are additionally serialized process-wide, and a hung keyring daemon is detected within seconds by a liveness ping.
 
 ## Testing
 
@@ -178,7 +204,7 @@ Optional features are guarded by traits. Enable them explicitly when building or
 xcrun swift test --traits "observation,cryptography"
 ```
 
-Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain.
+Set `SWIFTYCHAIN_RUN_KEYCHAIN_INTEGRATION=1` to opt into the suite that exercises the real Apple keychain. Data-protection and access-control tests run inside a host app: `scripts/run-keychain-host-tests.sh ios`, or `macos` with `DEVELOPMENT_TEAM` set.
 
 On Linux, run the same suite against GNOME Keyring. The helper script starts a private
 D-Bus session and a throwaway keyring in a temporary directory, so your own keyrings are

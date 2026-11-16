@@ -6,38 +6,17 @@
 interacting with the keychain, on every platform. Pattern-match on specific
 cases to provide targeted recovery.
 
-For most writes, use ``Keychain/upsert(_:for:)`` which handles
-create-or-replace in one call and avoids the need to pattern-match on
-``duplicateItem``:
+Use ``Keychain/upsert(_:for:)`` to add or update. It first attempts add, then updates
+a duplicate; the two steps are not a cross-platform atomic transaction.
 
-```swift
-// Preferred: upsert handles create-or-replace atomically
-try await Keychain.shared.upsert(token, for: key)
-```
+Handle ``interactionNotAllowed`` when storage is locked or interaction cannot occur,
+``userCanceled`` when the user dismisses authentication, and ``invalidArgument(_:)`` when
+options conflict. Authentication failure is reported separately. On Linux, cancellation
+from the operation timer is ``timedOut``.
 
-When you do need to distinguish specific failures, pattern-match on the
-error:
-
-```swift
-do {
-    let token = try await Keychain.shared.load(key: key)
-    use(token)
-} catch KeychainError.itemNotFound {
-    // First launch — nothing stored yet; redirect to login
-} catch KeychainError.authenticationFailed {
-    // Authentication failed — check key accessibility or prompt the user again
-} catch KeychainError.accessGroupDenied {
-    // Missing entitlements for the access group in the key
-} catch KeychainError.platformUnsupported(let reason) {
-    // No secure storage here, such as a Linux machine without a keyring
-    print("Keychain unavailable:", reason)
-} catch KeychainError.timedOut {
-    // The keyring didn't respond, or an unlock prompt went unanswered
-} catch {
-    // Unexpected failure
-    print("Keychain error:", error)
-}
-```
+`operationFailed(Int32)` retains the platform's code: `OSStatus` on Apple, libsecret or GLib
+codes on Linux. Linux error domains are recorded in logs; identical codes can have different
+meanings in different domains. See <doc:Linux> and <doc:MigratingTo2>.
 
 ## Topics
 
@@ -46,7 +25,9 @@ do {
 - ``itemNotFound``
 - ``duplicateItem``
 - ``authenticationFailed``
-- ``userPresenceRequired``
+- ``interactionNotAllowed``
+- ``userCanceled``
+- ``invalidArgument(_:)``
 - ``unexpectedData``
 - ``encodingFailed(_:)``
 - ``decodingFailed(_:)``

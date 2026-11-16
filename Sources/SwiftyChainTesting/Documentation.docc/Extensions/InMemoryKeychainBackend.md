@@ -31,15 +31,23 @@ one per test to guarantee that tests do not share state.
 `InMemoryKeychainBackend` uses a `Mutex` to serialize all reads and writes, making
 it safe to call from multiple threads or concurrent Swift tasks.
 
+Pass `capabilities:` to reproduce restrictions. Use the same backend with
+`Keychain(backend:)` to exercise the production engine. Each engine has a separate
+observation registry even when the backend instance is shared.
+
 ## Topics
 
 ### Creating
 
-- ``init()``
+- ``init(capabilities:)``
+- ``capabilities``
+- ``defaultCapabilities``
 
 ### Reading and Writing
 
-- ``save(_:service:account:accessGroup:accessibility:isSynchronizable:label:comment:)``
-- ``load(service:account:accessGroup:isSynchronizable:)``
-- ``update(_:service:account:accessGroup:accessibility:isSynchronizable:label:comment:)``
-- ``delete(service:account:accessGroup:isSynchronizable:)``
+- ``add(_:attributes:)``
+- ``data(matching:)``
+- ``contains(matching:)``
+- ``accounts(matching:)``
+- ``update(matching:to:)``
+- ``delete(matching:)``

@@ -105,6 +105,9 @@ public enum AuthenticationType: Sendable, Hashable {
 /// try await Keychain.shared.saveInternetPassword("s3cr3t", for: key)
 /// let password = try await Keychain.shared.loadInternetPassword(for: key)
 /// ```
+///
+/// Two keys are equal when they identify the same item. `accessibility` controls how an
+/// item is stored, not which item it is, so it doesn't take part.
 public struct InternetPasswordKey: Sendable, Hashable {
     /// The server hostname (e.g., `"api.example.com"`).
     public let server: String
@@ -120,8 +123,12 @@ public struct InternetPasswordKey: Sendable, Hashable {
     public let authenticationType: AuthenticationType
     /// The access group for sharing across apps, or `nil` for the default group.
     public let accessGroup: String?
-    /// The accessibility policy for this item.
-    public let accessibility: KeychainAccessibility
+    /// Whether this password syncs through iCloud Keychain.
+    public let isSynchronizable: Bool
+    /// The accessibility policy for this item, or `nil` for the platform default.
+    public let accessibility: KeychainAccessibility?
+    /// Authentication required when accessing the stored item.
+    public let accessControl: KeychainAccessControl?
 
     /// Creates an internet password key descriptor.
     ///
@@ -133,7 +140,9 @@ public struct InternetPasswordKey: Sendable, Hashable {
     ///   - protocol: The internet protocol. Defaults to ``InternetProtocol/https``.
     ///   - authenticationType: The authentication type. Defaults to ``AuthenticationType/default``.
     ///   - accessGroup: The keychain access group. Defaults to `nil`.
-    ///   - accessibility: The accessibility policy. Defaults to ``KeychainAccessibility/whenUnlocked``.
+    ///   - accessControl: Authentication required to access the item. Defaults to `nil`.
+    ///   - accessibility: The accessibility policy. Defaults to `nil`, the platform default.
+    ///   - isSynchronizable: Whether to synchronize through iCloud Keychain. Defaults to `false`.
     public init(
         server: String,
         account: String,
@@ -142,7 +151,9 @@ public struct InternetPasswordKey: Sendable, Hashable {
         protocol: InternetProtocol = .https,
         authenticationType: AuthenticationType = .default,
         accessGroup: String? = nil,
-        accessibility: KeychainAccessibility = .whenUnlocked
+        accessibility: KeychainAccessibility? = nil,
+        accessControl: KeychainAccessControl? = nil,
+        isSynchronizable: Bool = false
     ) {
         self.server = server
         self.account = account
@@ -152,5 +163,30 @@ public struct InternetPasswordKey: Sendable, Hashable {
         self.authenticationType = authenticationType
         self.accessGroup = accessGroup
         self.accessibility = accessibility
+        self.accessControl = accessControl
+        self.isSynchronizable = isSynchronizable
+    }
+
+    /// Two keys are equal when they identify the same keychain item.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.server == rhs.server
+            && lhs.account == rhs.account
+            && lhs.port == rhs.port
+            && lhs.path == rhs.path
+            && lhs.protocol == rhs.protocol
+            && lhs.authenticationType == rhs.authenticationType
+            && lhs.accessGroup == rhs.accessGroup
+            && lhs.isSynchronizable == rhs.isSynchronizable
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(server)
+        hasher.combine(account)
+        hasher.combine(port)
+        hasher.combine(path)
+        hasher.combine(`protocol`)
+        hasher.combine(authenticationType)
+        hasher.combine(accessGroup)
+        hasher.combine(isSynchronizable)
     }
 }

@@ -66,7 +66,7 @@ let loaded = try await keychain.loadCryptoKey(keyRef: keyRef)
 
 ### Creating
 
-- ``init()``
+- ``init(emulating:)``
 
 ### Generic Passwords
 

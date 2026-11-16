@@ -6,20 +6,32 @@ public enum KeychainError: Error, Sendable, Equatable {
     case itemNotFound
     /// An item already exists for the given key. Use ``Keychain/upsert(_:for:)`` to overwrite.
     case duplicateItem
-    /// The user declined biometric or password authentication.
+    /// Authentication was attempted and failed, such as a wrong password, or access to
+    /// the item was denied.
     case authenticationFailed
-    /// The item requires user presence (e.g., biometrics) but none was requested.
-    case userPresenceRequired
+    /// The user dismissed an authentication prompt: biometry or passcode on Apple
+    /// platforms, an unlock prompt on Linux.
+    case userCanceled
+    /// The item can't be read without user interaction that isn't possible now.
+    ///
+    /// On Apple platforms this is `errSecInteractionNotAllowed`, which usually means the
+    /// device is locked and the item's ``KeychainAccessibility`` doesn't allow reading it
+    /// yet. On Linux the keyring holding the item is locked and can't be unlocked, for
+    /// example because no prompt can be shown.
+    case interactionNotAllowed
     /// The platform keychain returned data in an unexpected format.
     case unexpectedData
     /// Serialization of the value into `Data` failed. Contains a description of the underlying error.
     case encodingFailed(String)
     /// Deserialization of `Data` back into the value type failed. Contains a description of the underlying error.
     case decodingFailed(String)
-    /// The platform keychain reported a failure with this status code.
+    /// The platform keychain reported a failure SwiftyChain has no specific case for.
     ///
-    /// On Apple platforms the code is the Security framework `OSStatus`. On Linux
-    /// it is the libsecret or GLib error code.
+    /// The code is platform-specific. On Apple platforms it is the Security framework
+    /// `OSStatus`, such as `-50` (`errSecParam`). On Linux it is the libsecret or GLib
+    /// error code from the error's domain, so the same number can mean different things
+    /// in different domains; SwiftyChain's logs record the domain. A code of `0` on Linux
+    /// means libsecret failed without reporting an error.
     case operationFailed(Int32)
     /// The app lacks entitlements to access the specified access group (Apple platforms).
     case accessGroupDenied
@@ -30,6 +42,9 @@ public enum KeychainError: Error, Sendable, Equatable {
     case platformUnsupported(String)
     /// The platform keychain did not respond before the operation's timeout elapsed.
     case timedOut
+    /// The request combines options that contradict each other, such as a synchronizable
+    /// item with a `ThisDeviceOnly` accessibility. The message names the conflict.
+    case invalidArgument(String)
 }
 
 extension KeychainError {
@@ -61,8 +76,10 @@ extension KeychainError {
             "duplicateItem"
         case .authenticationFailed:
             "authenticationFailed"
-        case .userPresenceRequired:
-            "userPresenceRequired"
+        case .userCanceled:
+            "userCanceled"
+        case .interactionNotAllowed:
+            "interactionNotAllowed"
         case .unexpectedData:
             "unexpectedData"
         case .encodingFailed:
@@ -77,6 +94,8 @@ extension KeychainError {
             "platformUnsupported"
         case .timedOut:
             "timedOut"
+        case .invalidArgument:
+            "invalidArgument"
         }
     }
 }

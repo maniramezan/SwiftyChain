@@ -140,6 +140,20 @@ static struct {
     swiftychain_secret_cancellable *(*cancellable_new)(void);
     void (*cancellable_cancel)(swiftychain_secret_cancellable *);
     void *(*bus_get_sync)(int, swiftychain_secret_cancellable *, swiftychain_secret_error **);
+    void *(*connection_call_sync)(
+        void *,
+        const char *,
+        const char *,
+        const char *,
+        const char *,
+        void *,
+        const void *,
+        int,
+        int,
+        swiftychain_secret_cancellable *,
+        swiftychain_secret_error **
+    );
+    void (*variant_unref)(void *);
     void (*connection_set_exit_on_close)(void *, swiftychain_gboolean);
     const char *(*quark_to_string)(swiftychain_gquark);
     void (*error_free)(swiftychain_secret_error *);
@@ -157,6 +171,8 @@ static struct {
         swiftychain_secret_cancellable *,
         swiftychain_secret_error **
     );
+    swiftychain_gboolean (*item_delete)(void *, swiftychain_secret_cancellable *, swiftychain_secret_error **);
+    swiftychain_gboolean (*item_get_locked)(void *);
     void (*service_disconnect)(void);
 } fn;
 
@@ -232,6 +248,8 @@ static void load_library(void) {
     RESOLVE(cancellable_new, "g_cancellable_new");
     RESOLVE(cancellable_cancel, "g_cancellable_cancel");
     RESOLVE(bus_get_sync, "g_bus_get_sync");
+    RESOLVE(connection_call_sync, "g_dbus_connection_call_sync");
+    RESOLVE(variant_unref, "g_variant_unref");
     RESOLVE(connection_set_exit_on_close, "g_dbus_connection_set_exit_on_close");
     RESOLVE(quark_to_string, "g_quark_to_string");
     RESOLVE(error_free, "g_error_free");
@@ -239,6 +257,8 @@ static void load_library(void) {
     RESOLVE(type_check_instance_is_a, "g_type_check_instance_is_a");
     RESOLVE(item_set_secret, "secret_item_set_secret_sync");
     RESOLVE(item_set_label, "secret_item_set_label_sync");
+    RESOLVE(item_delete, "secret_item_delete_sync");
+    RESOLVE(item_get_locked, "secret_item_get_locked");
     RESOLVE(service_disconnect, "secret_service_disconnect");
     load_status = SWIFTYCHAIN_SECRET_LOADED;
 }
@@ -282,6 +302,37 @@ int swiftychain_secret_session_bus_available(
         fn.connection_set_exit_on_close(connection, 0);
     }
     fn.object_unref(connection);
+    return 1;
+}
+
+int swiftychain_secret_service_ping(int timeout_ms, swiftychain_secret_error **error) {
+    swiftychain_secret_error *bus_error = NULL;
+    void *connection = fn.bus_get_sync(BUS_TYPE_SESSION, NULL, &bus_error);
+    if (connection == NULL) {
+        if (bus_error != NULL) {
+            fn.error_free(bus_error);
+        }
+        return 1;
+    }
+    /* G_DBUS_CALL_FLAGS_NO_AUTO_START: a ping must not start a provider. */
+    void *reply = fn.connection_call_sync(
+        connection,
+        "org.freedesktop.secrets",
+        "/org/freedesktop/secrets",
+        "org.freedesktop.DBus.Peer",
+        "Ping",
+        NULL,
+        NULL,
+        1,
+        timeout_ms,
+        NULL,
+        error
+    );
+    fn.object_unref(connection);
+    if (reply == NULL) {
+        return 0;
+    }
+    fn.variant_unref(reply);
     return 1;
 }
 
@@ -394,6 +445,18 @@ int swiftychain_secret_item_set_label(
     swiftychain_secret_error **error
 ) {
     return fn.item_set_label(item, label, cancellable, error) ? 1 : 0;
+}
+
+int swiftychain_secret_item_delete(
+    swiftychain_secret_item *item,
+    swiftychain_secret_cancellable *cancellable,
+    swiftychain_secret_error **error
+) {
+    return fn.item_delete(item, cancellable, error) ? 1 : 0;
+}
+
+int swiftychain_secret_item_is_locked(swiftychain_secret_item *item) {
+    return fn.item_get_locked(item) ? 1 : 0;
 }
 
 swiftychain_secret_value *swiftychain_secret_item_secret(

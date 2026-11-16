@@ -8,10 +8,10 @@ struct SecretServiceErrorsTests {
 
     @Test(
         arguments: [
-            (SecretServiceFailure(domain: "secret-error", code: 2), KeychainError.userPresenceRequired),
+            (SecretServiceFailure(domain: "secret-error", code: 2), KeychainError.interactionNotAllowed),
             (SecretServiceFailure(domain: "secret-error", code: 3), .itemNotFound),
             (SecretServiceFailure(domain: "secret-error", code: 4), .duplicateItem),
-            (SecretServiceFailure(domain: "g-io-error-quark", code: 19), .authenticationFailed),
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 19), .userCanceled),
             (SecretServiceFailure(domain: "g-io-error-quark", code: 24), .timedOut),
             (SecretServiceFailure(domain: "g-dbus-error-quark", code: 4), .timedOut),
             (SecretServiceFailure(domain: "g-dbus-error-quark", code: 9), .authenticationFailed),
@@ -24,6 +24,22 @@ struct SecretServiceErrorsTests {
     )
     func mapsFailures(_ failure: SecretServiceFailure, _ expected: KeychainError) {
         #expect(SecretServiceErrors.keychainError(for: failure, timerFired: false) == expected)
+    }
+
+    @Test(
+        arguments: [
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 24), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 4), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 12), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 20), true),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 2), false),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 3), false),
+            (SecretServiceFailure(domain: "g-dbus-error-quark", code: 19), false),
+            (SecretServiceFailure(domain: "g-io-error-quark", code: 19), false),
+        ]
+    )
+    func onlyAPingTimeoutMeansTheProviderIsHung(_ failure: SecretServiceFailure, _ hung: Bool) {
+        #expect(SecretServiceErrors.isUnresponsive(failure) == hung)
     }
 
     @Test
@@ -68,7 +84,8 @@ struct SecretServiceErrorsTests {
     func onlyConnectionFailuresResetTheConnection() {
         #expect(!SecretServiceErrors.shouldResetConnection(after: .itemNotFound))
         #expect(!SecretServiceErrors.shouldResetConnection(after: .duplicateItem))
-        #expect(!SecretServiceErrors.shouldResetConnection(after: .userPresenceRequired))
+        #expect(!SecretServiceErrors.shouldResetConnection(after: .interactionNotAllowed))
+        #expect(!SecretServiceErrors.shouldResetConnection(after: .userCanceled))
         #expect(!SecretServiceErrors.shouldResetConnection(after: .authenticationFailed))
         #expect(SecretServiceErrors.shouldResetConnection(after: .timedOut))
         #expect(SecretServiceErrors.shouldResetConnection(after: .operationFailed(1)))

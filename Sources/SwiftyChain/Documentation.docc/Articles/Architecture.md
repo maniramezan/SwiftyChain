@@ -19,7 +19,7 @@ so the same calls behave the same way everywhere.
 
 ### The backend contract
 
-Every backend implements the same small set of operations: add, copy matching items,
+Every backend implements the same small set of operations: add, read data, check existence, enumerate accounts,
 update, and delete. They share these rules:
 
 - An attribute left unset in a query matches any value.
@@ -29,7 +29,7 @@ update, and delete. They share these rules:
 - Platform diagnostics are logged, never carried in the thrown error.
 
 Each backend also declares its capabilities: synchronizable items, access groups, internet
-passwords, and cryptographic keys. Before any call reaches a backend, the engine checks the
+passwords, cryptographic keys, unscoped bulk deletes, and access control. Before any call reaches a backend, the engine checks the
 query against those capabilities in one place.
 An option the platform can't honor fails with ``KeychainError/platformUnsupported(_:)``,
 worded the same way on every platform, instead of being silently ignored. Accessibility
@@ -47,3 +47,20 @@ Keychain, and GNOME Keyring on Linux CI.
 On a platform with no keychain backend, every call throws
 ``KeychainError/platformUnsupported(_:)``. Code that uses SwiftyChain still compiles there,
 and fails clearly at runtime instead of storing secrets insecurely.
+
+### Execution, observation, and macOS stores
+
+Apple and Linux actors run blocking calls on a serial dispatch queue of their own wherever
+Dispatch is available, so a call waiting on a prompt or a slow custom backend only holds up
+its own instance. On Linux, the Secret Service backend additionally serializes every libsecret
+call in the process. Running and waiting calls ping the provider every two seconds, so a
+hung keyring daemon fails them with `timedOut` within a few seconds instead of at the
+30-second timeout, and later calls fail after a single ping until it answers again. A
+provider busy with an unlock prompt still answers pings, so prompts keep the full timeout. `KeychainStorage` runs on its calling thread using the same engine.
+Platform-backed engines for the same store share one observation registry; the macOS legacy
+and data-protection stores each have their own. Custom backends have a separate
+registry per engine. Internet events use `server`; generic events use `service`.
+
+On macOS, `KeychainConfiguration` selects the legacy login keychain by default or opts in
+to the data-protection store. Access control requires data protection and a signed, entitled
+host. tvOS and Linux reject it. See <doc:MigratingTo2> for the complete API changes.

@@ -1,5 +1,7 @@
 import Foundation
 import SwiftyChain
+import SwiftyChainTesting
+import Synchronization
 import Testing
 
 // A conformance written the way a downstream package would, without
@@ -93,4 +95,48 @@ func thirdPartyConformanceOnlyNeedsCoreRequirements() async throws {
     try await keychain.upsert("value", for: key)
     #expect(try await keychain.load(key: key) == "value")
     #expect(try await keychain.allAccounts(service: "tests.third-party") == ["token"])
+}
+
+private final class DownstreamBackend: KeychainBackend {
+    let capabilities = InMemoryKeychainBackend.defaultCapabilities
+    private let storage = InMemoryKeychainBackend()
+    private let policies = Mutex<[KeychainAttributes]>([])
+
+    var writtenPolicies: [KeychainAttributes] { policies.withLock { $0 } }
+
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
+        try storage.add(query, attributes: attributes)
+        policies.withLock { $0.append(attributes) }
+    }
+
+    func data(matching query: KeychainQuery) throws -> Data { try storage.data(matching: query) }
+    func contains(matching query: KeychainQuery) throws -> Bool { try storage.contains(matching: query) }
+    func accounts(matching query: KeychainQuery) throws -> [String] { try storage.accounts(matching: query) }
+
+    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
+        try storage.update(matching: query, to: attributes)
+        policies.withLock { $0.append(attributes) }
+    }
+
+    func delete(matching query: KeychainQuery) throws { try storage.delete(matching: query) }
+}
+
+@Test
+func downstreamBackendRunsThroughThePublicEngine() async throws {
+    let backend = DownstreamBackend()
+    let keychain = Keychain(backend: backend)
+    let policy = KeychainKey<String>(service: "tests.downstream", account: "token", accessibility: .afterFirstUnlock)
+    let plain = KeychainKey<String>(service: policy.service, account: policy.account)
+    try await keychain.save("first", for: policy)
+    try await keychain.upsert("second", for: plain)
+    #expect(try await keychain.load(key: plain) == "second")
+    #expect(try await keychain.allAccounts(service: plain.service) == [plain.account])
+    #expect(backend.writtenPolicies.map(\.accessibility) == [.afterFirstUnlock, nil])
+    let storage = KeychainStorage<String>(plain.account, service: plain.service, backend: backend)
+    storage.wrappedValue = "third"
+    #expect(storage.projectedValue == nil)
+    #expect(try await keychain.load(key: plain) == "third")
+    #expect(backend.writtenPolicies.last?.accessibility == nil)
+    try await keychain.deleteAll(service: plain.service)
+    #expect(try await keychain.exists(key: plain) == false)
 }

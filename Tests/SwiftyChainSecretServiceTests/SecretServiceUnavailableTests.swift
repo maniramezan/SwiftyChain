@@ -17,8 +17,10 @@
             let query = KeychainQuery(itemClass: .genericPassword, service: "tests.unavailable", account: "a")
             let missing = SecretServiceUnavailability.libraryMissing.error
 
-            #expect(throws: missing) { try backend.add(query, data: Data("value".utf8)) }
-            #expect(throws: missing) { try backend.copyMatching(query) }
+            #expect(throws: missing) {
+                try backend.add(query, attributes: KeychainAttributes(data: Data("value".utf8)))
+            }
+            #expect(throws: missing) { try backend.data(matching: query) }
             #expect(throws: missing) { try backend.delete(matching: query) }
         }
     }
@@ -36,8 +38,10 @@
             let query = KeychainQuery(itemClass: .genericPassword, service: "tests.no-bus", account: "a")
             let missing = SecretServiceUnavailability.noSessionBus.error
 
-            #expect(throws: missing) { try backend.add(query, data: Data("value".utf8)) }
-            #expect(throws: missing) { try backend.copyMatching(query) }
+            #expect(throws: missing) {
+                try backend.add(query, attributes: KeychainAttributes(data: Data("value".utf8)))
+            }
+            #expect(throws: missing) { try backend.data(matching: query) }
             #expect(throws: missing) { try backend.delete(matching: query) }
         }
     }
@@ -55,8 +59,10 @@
             let query = KeychainQuery(itemClass: .genericPassword, service: "tests.no-provider", account: "a")
             let missing = SecretServiceUnavailability.noProvider.error
 
-            #expect(throws: missing) { try backend.add(query, data: Data("value".utf8)) }
-            #expect(throws: missing) { try backend.copyMatching(query) }
+            #expect(throws: missing) {
+                try backend.add(query, attributes: KeychainAttributes(data: Data("value".utf8)))
+            }
+            #expect(throws: missing) { try backend.data(matching: query) }
             #expect(throws: missing) { try backend.delete(matching: query) }
         }
     }

@@ -3,3 +3,4 @@
 .swiftpm/
 docs/
 .DS_Store
+Tests/KeychainHost/KeychainHost.xcodeproj/

@@ -40,10 +40,22 @@ import SwiftyChain
 /// When the `cryptography` trait is enabled, `InMemoryKeychain` implements
 /// `saveCryptoKey(_:for:)`, `loadCryptoKey(keyRef:)`, and `deleteCryptoKey(keyRef:)`.
 public actor InMemoryKeychain: KeychainProtocol {
-    private let engine = KeychainEngine(backend: InMemoryStorageBackend())
+    private let engine: KeychainEngine
 
-    /// Creates a new, empty in-memory keychain.
-    public init() {}
+    /// Creates a new, empty in-memory keychain that supports every option.
+    public init() {
+        self.init(emulating: .apple)
+    }
+
+    /// Creates a new, empty in-memory keychain that rejects the options `platform`'s
+    /// keychain doesn't support, with the same errors.
+    ///
+    /// ```swift
+    /// let keychain = InMemoryKeychain(emulating: .linux)
+    /// ```
+    public init(emulating platform: EmulatedKeychainPlatform) {
+        self.engine = KeychainEngine(backend: InMemoryKeychainBackend(capabilities: platform.capabilities))
+    }
 
     /// Saves a new item.
     ///
@@ -140,12 +152,19 @@ public actor InMemoryKeychain: KeychainProtocol {
         ) -> AsyncStream<KeychainChangeEvent> {
             engine.observeKeychainChanges(service: service, accessGroup: accessGroup)
         }
+
+        /// Observes internet-password changes for a server.
+        public func observeKeychainChanges(server: String, accessGroup: String? = nil) -> AsyncStream<
+            KeychainChangeEvent
+        > {
+            engine.observeKeychainChanges(server: server, accessGroup: accessGroup)
+        }
     #endif
 
     #if Cryptography && canImport(Security)
-        /// Saves a cryptographic key.
+        /// Saves a new cryptographic key.
         ///
-        /// Replaces any previously saved key for the same `keyRef`.
+        /// - Throws: `KeychainError.duplicateItem` if a key matching `keyRef` was saved.
         public func saveCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
             try engine.saveCryptoKey(key, for: keyRef)
         }
@@ -153,6 +172,11 @@ public actor InMemoryKeychain: KeychainProtocol {
         /// Loads a cryptographic key.
         ///
         /// - Throws: `KeychainError.itemNotFound` if no key matching `keyRef` was saved.
+        /// Adds or updates a cryptographic key in place.
+        public func upsertCryptoKey(_ key: StoredSecKey, for keyRef: CryptoKeyReference<StoredSecKey>) throws {
+            try engine.upsertCryptoKey(key, for: keyRef)
+        }
+
         public func loadCryptoKey(keyRef: CryptoKeyReference<StoredSecKey>) throws -> StoredSecKey {
             try engine.loadCryptoKey(keyRef: keyRef)
         }

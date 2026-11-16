@@ -53,13 +53,16 @@ func keychainErrorLogNamesCoverAllCases() {
         (.itemNotFound, "itemNotFound"),
         (.duplicateItem, "duplicateItem"),
         (.authenticationFailed, "authenticationFailed"),
-        (.userPresenceRequired, "userPresenceRequired"),
+        (.userCanceled, "userCanceled"),
+        (.interactionNotAllowed, "interactionNotAllowed"),
         (.unexpectedData, "unexpectedData"),
         (.encodingFailed("x"), "encodingFailed"),
         (.decodingFailed("x"), "decodingFailed"),
         (.operationFailed(-1), "operationFailed"),
         (.accessGroupDenied, "accessGroupDenied"),
         (.platformUnsupported("nope"), "platformUnsupported"),
+        (.timedOut, "timedOut"),
+        (.invalidArgument("nope"), "invalidArgument"),
     ]
 
     for (error, expectedLogName) in cases {
@@ -72,12 +75,14 @@ func keychainErrorLogNamesCoverAllCases() {
         KeychainError.itemNotFound,
         .duplicateItem,
         .authenticationFailed,
-        .userPresenceRequired,
+        .userCanceled,
+        .interactionNotAllowed,
         .encodingFailed("bad"),
         .decodingFailed("bad"),
         .accessGroupDenied,
         .platformUnsupported("none"),
         .timedOut,
+        .invalidArgument("conflict"),
     ]
 )
 func callerHandledErrorsAreExpectedOutcomes(_ error: KeychainError) {

@@ -1,26 +1,24 @@
-#if os(Linux)
+#if canImport(Dispatch)
     import Dispatch
 
-    /// The serial executor every ``Keychain`` actor runs on under Linux.
+    /// The serial executor a ``Keychain`` actor uses when Dispatch is available.
     ///
-    /// libsecret's calls are synchronous and can block for up to the backend timeout,
-    /// for example while an unlock prompt is open or the keyring daemon is hung. Running
-    /// them on Swift's cooperative pool, which has one thread per core, would let a
-    /// few stuck calls stall every async task in the process. This executor moves that
-    /// blocking onto one dedicated dispatch queue instead.
+    /// Security and libsecret calls block their thread while the platform keychain
+    /// responds. A dedicated serial dispatch queue keeps these calls off Swift's
+    /// cooperative pool. Each ``Keychain`` has its own queue, so a call waiting on a
+    /// biometric prompt, or a slow custom backend, only holds up its own instance.
     ///
-    /// All ``Keychain`` instances share the queue. The Secret Service backend serializes
-    /// its calls process-wide anyway, so separate queues would only add threads that
-    /// wait on one another.
+    /// On Linux, the Secret Service backend also serializes every libsecret call in the
+    /// process (see `SecretServiceClient`). A hung keyring daemon is found with a
+    /// liveness ping within a few seconds, after which calls fail fast with
+    /// ``KeychainError/timedOut`` until it answers again.
     package final class KeychainExecutor: SerialExecutor {
-        package static let shared = KeychainExecutor()
-
-        /// Set on the executor's queue, so tests can check where keychain work runs.
+        /// Set on every executor's queue, so tests can check where keychain work runs.
         package static let queueKey = DispatchSpecificKey<Bool>()
 
         private let queue: DispatchQueue
 
-        private init() {
+        package init() {
             queue = DispatchQueue(label: "dev.manman.SwiftyChain.Keychain", qos: .userInitiated)
             queue.setSpecific(key: Self.queueKey, value: true)
         }

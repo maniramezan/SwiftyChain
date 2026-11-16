@@ -1,264 +1,28 @@
 import Foundation
+import SwiftyChainTesting
 import Synchronization
 import Testing
 
 @testable import SwiftyChain
 
-private final class TestSecureStorageBackend: SecureStorageBackend, Sendable {
-    let capabilities: SecureStorageCapabilities = .all
-
-    private struct GenericIdentity: Hashable, Sendable {
-        let service: String?
-        let account: String?
-        let accessGroup: String?
-        let isSynchronizable: Bool?
-    }
-
-    private struct InternetIdentity: Hashable, Sendable {
-        let server: String?
-        let account: String?
-        let accessGroup: String?
-        let port: Int?
-        let path: String?
-        let internetProtocol: InternetProtocol?
-        let authenticationType: AuthenticationType?
-    }
-
-    private struct GenericRecord: Sendable {
-        var data: Data
-        var label: String?
-        var comment: String?
-        var accessibility: KeychainAccessibility?
-    }
-
-    private struct InternetRecord: Sendable {
-        var data: Data
-        var accessibility: KeychainAccessibility?
-    }
-
-    private struct State: Sendable {
-        var genericPasswords: [GenericIdentity: GenericRecord] = [:]
-        var internetPasswords: [InternetIdentity: InternetRecord] = [:]
-    }
-
-    private let storage = Mutex(State())
-
-    func add(_ query: KeychainQuery, data: Data) throws {
-        try storage.withLock { state in
-            switch query.itemClass.kind {
-            case .genericPassword:
-                let identity = genericIdentity(for: query)
-                guard state.genericPasswords[identity] == nil else {
-                    throw KeychainError.duplicateItem
-                }
-                state.genericPasswords[identity] = GenericRecord(
-                    data: data,
-                    label: query.label,
-                    comment: query.comment,
-                    accessibility: query.accessibility
-                )
-            case .internetPassword:
-                let identity = internetIdentity(for: query)
-                guard state.internetPasswords[identity] == nil else {
-                    throw KeychainError.duplicateItem
-                }
-                state.internetPasswords[identity] = InternetRecord(
-                    data: data,
-                    accessibility: query.accessibility
-                )
-            case .cryptographicKey:
-                throw KeychainError.platformUnsupported("Unsupported in test backend")
-            }
-        }
-    }
-
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-        try storage.withLock { state in
-            switch query.itemClass.kind {
-            case .genericPassword:
-                if query.matchLimit == .all {
-                    let items: [KeychainQueryResult] = state.genericPasswords.compactMap { identity, _ in
-                        guard matchesGeneric(identity, query: query) else { return nil }
-                        return KeychainQueryResult.attributes([
-                            .account(identity.account ?? ""),
-                            .service(identity.service ?? ""),
-                        ])
-                    }
-                    guard !items.isEmpty else {
-                        throw KeychainError.itemNotFound
-                    }
-                    return .items(items)
-                }
-
-                guard let record = state.genericPasswords[genericIdentity(for: query)] else {
-                    throw KeychainError.itemNotFound
-                }
-
-                if query.returnData {
-                    return .data(record.data)
-                }
-                if query.returnAttributes {
-                    return .attributes([
-                        .account(query.account ?? ""),
-                        .service(query.service ?? ""),
-                    ])
-                }
-                return .attributes([])
-            case .internetPassword:
-                guard let record = state.internetPasswords[internetIdentity(for: query)] else {
-                    throw KeychainError.itemNotFound
-                }
-                if query.returnData {
-                    return .data(record.data)
-                }
-                return .attributes([])
-            case .cryptographicKey:
-                throw KeychainError.platformUnsupported("Unsupported in test backend")
-            }
-        }
-    }
-
-    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {
-        try storage.withLock { state in
-            switch query.itemClass.kind {
-            case .genericPassword:
-                let identity = genericIdentity(for: query)
-                guard var record = state.genericPasswords[identity] else {
-                    throw KeychainError.itemNotFound
-                }
-                if let data = attributes.data {
-                    record.data = data
-                }
-                record.label = attributes.label
-                record.comment = attributes.comment
-                record.accessibility = attributes.accessibility
-                state.genericPasswords[identity] = record
-            case .internetPassword:
-                let identity = internetIdentity(for: query)
-                guard var record = state.internetPasswords[identity] else {
-                    throw KeychainError.itemNotFound
-                }
-                if let data = attributes.data {
-                    record.data = data
-                }
-                record.accessibility = attributes.accessibility
-                state.internetPasswords[identity] = record
-            case .cryptographicKey:
-                throw KeychainError.platformUnsupported("Unsupported in test backend")
-            }
-        }
-    }
-
-    func delete(matching query: KeychainQuery) throws {
-        storage.withLock { state in
-            switch query.itemClass.kind {
-            case .genericPassword:
-                state.genericPasswords = state.genericPasswords.filter { identity, _ in
-                    !matchesGeneric(identity, query: query)
-                }
-            case .internetPassword:
-                state.internetPasswords = state.internetPasswords.filter { identity, _ in
-                    !matchesInternet(identity, query: query)
-                }
-            case .cryptographicKey:
-                break
-            }
-        }
-    }
-
-    private func genericIdentity(for query: KeychainQuery) -> GenericIdentity {
-        GenericIdentity(
-            service: query.service,
-            account: query.account,
-            accessGroup: query.accessGroup,
-            isSynchronizable: query.isSynchronizable
-        )
-    }
-
-    private func internetIdentity(for query: KeychainQuery) -> InternetIdentity {
-        InternetIdentity(
-            server: query.server,
-            account: query.account,
-            accessGroup: query.accessGroup,
-            port: query.port,
-            path: query.path,
-            internetProtocol: query.internetProtocol,
-            authenticationType: query.authenticationType
-        )
-    }
-
-    private func matchesGeneric(_ identity: GenericIdentity, query: KeychainQuery) -> Bool {
-        if let service = query.service, identity.service != service {
-            return false
-        }
-        if let account = query.account, identity.account != account {
-            return false
-        }
-        if let accessGroup = query.accessGroup, identity.accessGroup != accessGroup {
-            return false
-        }
-        if let isSynchronizable = query.isSynchronizable, identity.isSynchronizable != isSynchronizable {
-            return false
-        }
-        return true
-    }
-
-    private func matchesInternet(_ identity: InternetIdentity, query: KeychainQuery) -> Bool {
-        if let server = query.server, identity.server != server {
-            return false
-        }
-        if let account = query.account, identity.account != account {
-            return false
-        }
-        if let accessGroup = query.accessGroup, identity.accessGroup != accessGroup {
-            return false
-        }
-        if let port = query.port, identity.port != port {
-            return false
-        }
-        if let path = query.path, identity.path != path {
-            return false
-        }
-        if let internetProtocol = query.internetProtocol, identity.internetProtocol != internetProtocol {
-            return false
-        }
-        if let authenticationType = query.authenticationType, identity.authenticationType != authenticationType {
-            return false
-        }
-        return true
-    }
-}
-
-private struct UnexpectedResultSecureStorageBackend: SecureStorageBackend {
-    let capabilities: SecureStorageCapabilities = .all
-
-    func add(_ query: KeychainQuery, data: Data) throws {}
-
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-        if query.matchLimit == .all {
-            return .data(Data())
-        }
-        if query.returnData {
-            return .attributes([])
-        }
-        return .data(Data())
-    }
-
-    func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
-
-    func delete(matching query: KeychainQuery) throws {}
-}
-
-private struct AlwaysFailingSecureStorageBackend: SecureStorageBackend {
-    let capabilities: SecureStorageCapabilities = .all
+private struct AlwaysFailingBackend: KeychainBackend {
+    let capabilities: KeychainBackendCapabilities = .all
 
     let error: KeychainError
 
-    func add(_ query: KeychainQuery, data: Data) throws {
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
         throw error
     }
 
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
+    func data(matching query: KeychainQuery) throws -> Data {
+        throw error
+    }
+
+    func contains(matching query: KeychainQuery) throws -> Bool {
+        throw error
+    }
+
+    func accounts(matching query: KeychainQuery) throws -> [String] {
         throw error
     }
 
@@ -271,15 +35,23 @@ private struct AlwaysFailingSecureStorageBackend: SecureStorageBackend {
     }
 }
 
-private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, Sendable {
-    let capabilities: SecureStorageCapabilities = .all
+private final class QueryRecordingBackend: KeychainBackend, Sendable {
+    let capabilities: KeychainBackendCapabilities = .all
 
     private let queries = Mutex<[KeychainQuery]>([])
 
-    func add(_ query: KeychainQuery, data: Data) throws {}
+    func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {}
 
-    func copyMatching(_ query: KeychainQuery) throws -> KeychainQueryResult {
-        .attributes([])
+    func data(matching query: KeychainQuery) throws -> Data {
+        Data()
+    }
+
+    func contains(matching query: KeychainQuery) throws -> Bool {
+        false
+    }
+
+    func accounts(matching query: KeychainQuery) throws -> [String] {
+        []
     }
 
     func update(matching query: KeychainQuery, to attributes: KeychainAttributes) throws {}
@@ -295,7 +67,7 @@ private final class QueryRecordingSecureStorageBackend: SecureStorageBackend, Se
 
 @Test
 func keychainActorGenericOperationsUseRealKeychainPaths() async throws {
-    let keychain = Keychain(backend: TestSecureStorageBackend())
+    let keychain = Keychain(backend: InMemoryKeychainBackend())
     let localKey = KeychainKey<String>(
         service: "tests.actor",
         account: "token",
@@ -347,7 +119,7 @@ func keychainActorGenericOperationsUseRealKeychainPaths() async throws {
 
 @Test
 func keychainActorInternetPasswordOperationsUseRealKeychainPaths() async throws {
-    let keychain = Keychain(backend: TestSecureStorageBackend())
+    let keychain = Keychain(backend: InMemoryKeychainBackend())
     let primary = InternetPasswordKey(
         server: "api.example.com",
         account: "alice",
@@ -379,45 +151,32 @@ func keychainActorInternetPasswordOperationsUseRealKeychainPaths() async throws 
     }
 }
 
-@Test
-func internetPasswordBulkDeleteDoesNotUseSynchronizableAttribute() async throws {
-    let backend = QueryRecordingSecureStorageBackend()
+@Test(
+    arguments: [
+        (KeychainDeleteQuery(service: "api.example.com", itemClass: .internetPassword), nil),
+        (KeychainDeleteQuery(service: "api.example.com", onlySynchronizable: true, itemClass: .internetPassword), true),
+        (
+            KeychainDeleteQuery(service: "api.example.com", includeSynchronizable: false, itemClass: .internetPassword),
+            false
+        ),
+    ] as [(KeychainDeleteQuery, Bool?)]
+)
+func internetPasswordBulkDeleteHonorsSynchronizableFilters(query: KeychainDeleteQuery, expected: Bool?) async throws {
+    let backend = QueryRecordingBackend()
     let keychain = Keychain(backend: backend)
 
-    try await keychain.deleteAllItems(
-        matching: KeychainDeleteQuery(
-            service: "api.example.com",
-            onlySynchronizable: true,
-            itemClass: .internetPassword
-        )
-    )
+    try await keychain.deleteAllItems(matching: query)
 
-    let query = backend.lastDeleteQuery()
-    #expect(query?.itemClass == .internetPassword)
-    #expect(query?.server == "api.example.com")
-    #expect(query?.isSynchronizable == nil)
-}
-
-@Test
-func keychainActorUnexpectedDataPathsAreCovered() async throws {
-    let keychain = Keychain(backend: UnexpectedResultSecureStorageBackend())
-    let key = KeychainKey<String>(service: "tests.actor.unexpected", account: "token")
-    let internetKey = InternetPasswordKey(server: "unexpected.example.com", account: "alice")
-
-    await #expect(throws: KeychainError.unexpectedData) {
-        try await keychain.load(key: key)
-    }
-    await #expect(throws: KeychainError.unexpectedData) {
-        try await keychain.allAccounts(service: "tests.actor.unexpected")
-    }
-    await #expect(throws: KeychainError.unexpectedData) {
-        try await keychain.loadInternetPassword(for: internetKey)
-    }
+    let recorded = backend.lastDeleteQuery()
+    #expect(recorded?.itemClass == .internetPassword)
+    #expect(recorded?.server == "api.example.com")
+    #expect(recorded?.service == nil)
+    #expect(recorded?.isSynchronizable == expected)
 }
 
 @Test
 func keychainActorPropagatesBackendFailures() async throws {
-    let keychain = Keychain(backend: AlwaysFailingSecureStorageBackend(error: .unexpectedData))
+    let keychain = Keychain(backend: AlwaysFailingBackend(error: .unexpectedData))
     let key = KeychainKey<String>(service: "tests.actor.failures", account: "token")
     let internetKey = InternetPasswordKey(server: "failures.example.com", account: "alice")
 
@@ -453,7 +212,7 @@ func keychainActorPropagatesBackendFailures() async throws {
 #if Observation
     @Test
     func keychainActorObservationStreamReceivesEvents() async throws {
-        let keychain = Keychain(backend: TestSecureStorageBackend())
+        let keychain = Keychain(backend: InMemoryKeychainBackend())
         let key = KeychainKey<String>(service: "tests.actor.observe", account: "token")
         let stream = await keychain.observeKeychainChanges(service: "tests.actor.observe")
 

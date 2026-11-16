@@ -16,6 +16,14 @@ struct SecretServiceDeadlineTests {
     }
 
     @Test
+    func convertsTimeoutsToGLibMilliseconds() {
+        #expect(SecretServiceDeadline.milliseconds(in: .seconds(1)) == 1000)
+        #expect(SecretServiceDeadline.milliseconds(in: .microseconds(10)) == 1)
+        #expect(SecretServiceDeadline.milliseconds(in: .zero) == 1)
+        #expect(SecretServiceDeadline.milliseconds(in: .seconds(Int64.max)) == .max)
+    }
+
+    @Test
     func treatsUnrepresentableTimeoutsAsNoDeadline() {
         #expect(SecretServiceDeadline.nanoseconds(in: .seconds(Int64.max)) == nil)
         #expect(SecretServiceDeadline.dispatchTime(after: .seconds(Int64.max)) == .distantFuture)

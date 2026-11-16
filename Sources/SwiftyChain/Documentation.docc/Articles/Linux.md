@@ -48,6 +48,7 @@ in plaintext or in memory.
 | ``KeychainKey/label`` | Shown as the item name in keyring managers such as Seahorse. Defaults to `service (account)`. |
 | Strings containing a NUL character | Throws ``KeychainError/platformUnsupported(_:)``. libsecret reads attributes as C strings, so it would otherwise see only the text before the NUL. |
 | ``Keychain/deleteAllItems(matching:)`` without a service, server, or access group, or without an exact item | Throws ``KeychainError/platformUnsupported(_:)``; see <doc:#Isolation-between-applications>. |
+| ``KeychainKey/accessControl`` | Throws ``KeychainError/platformUnsupported(_:)``. |
 | `cryptography` trait | Unavailable; it stores Apple `SecKey` values. |
 
 Values are stored as binary data with no size limit, so every ``KeychainStorable`` type
@@ -72,7 +73,15 @@ Each request to the keyring gives up after 30 seconds and throws ``KeychainError
 so an unanswered prompt or an unresponsive keyring daemon can't block your app forever.
 The 30 seconds include time spent waiting for another SwiftyChain call in the same process
 to finish, so calls queued behind an unanswered prompt all time out together rather than
-one after another. A slow or hung D-Bus session bus also throws ``KeychainError/timedOut``,
+one after another.
+
+A keyring daemon that stops answering altogether is caught sooner. Every two seconds, a
+running call and each call waiting behind it ping the daemon. If it doesn't answer within
+a second, they throw ``KeychainError/timedOut`` right away, and later calls do the same
+after a single ping until the daemon answers again. An open unlock prompt doesn't count as
+a hang, because the daemon keeps answering pings while it waits for the user.
+
+A slow or hung D-Bus session bus also throws ``KeychainError/timedOut``,
 not ``KeychainError/platformUnsupported(_:)``, because it may recover. Most operations
 make one request. ``Keychain/upsert(_:for:)`` makes two when the item already exists (a
 save that finds the duplicate, then an update), so it can wait up to 60 seconds.
@@ -81,8 +90,10 @@ If the keyring daemon or the session bus restarts while your app runs, SwiftyCha
 reconnects on the next call, so a long-running process doesn't need restarting.
 
 When an unlock attempt leaves an existing item locked, reads and deletions throw
-``KeychainError/userPresenceRequired``. libsecret reports a dismissed prompt and a prompt
-that couldn't be shown the same way, so both surface as this error. A dismissed prompt
+``KeychainError/interactionNotAllowed``. Explicit GLib cancellation throws
+``KeychainError/userCanceled`` unless SwiftyChain's timer fired, which throws `timedOut`.
+libsecret does not always distinguish a dismissed unlock prompt from unavailable interaction,
+so an item left locked can still surface as `interactionNotAllowed`. A dismissed prompt
 never makes an existing credential appear missing, and deletion succeeds only when no
 matching items remain.
 
@@ -137,3 +148,11 @@ because the thrown error is the primary signal your code acts on. Only platform 
 (`KeychainError/unexpectedData` and `KeychainError/operationFailed(_:)`) are logged as
 errors. If debugging a missing keyring setup, turn debug logging on for the
 `dev.manman.SwiftyChain` labels.
+
+### macOS comparison
+
+The default macOS legacy login keychain can ignore accessibility policies and display ACL
+prompts. Opt in with `Keychain(configuration: .init(macOSStore: .dataProtection))` for
+accessibility and `KeychainAccessControl` policies. This store needs a signed, entitled host
+and does not migrate legacy items. `Keychain.shared` stays on the legacy store. See
+<doc:MigratingTo2> and [Apple's store-selection documentation](https://developer.apple.com/documentation/security/ksecusedataprotectionkeychain).
