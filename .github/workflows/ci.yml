@@ -118,7 +118,7 @@ jobs:
   # SwiftPM test bundles have no entitlements, so the iOS keychain rejects them. This
   # job runs DataProtectionIntegrationTests inside an ad-hoc signed host app instead.
   keychain-host-ios:
-    runs-on: macos-26-intel
+    runs-on: macos-26
     timeout-minutes: 45
     needs: lint
     env:
@@ -138,8 +138,34 @@ jobs:
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
-      - name: Test the data-protection keychain on iOS simulators
+      - name: Cache keychain-host build products
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/keychain-host/Build
+            .build/keychain-host/SourcePackages
+            .build/keychain-host/ModuleCache.noindex
+            .build/keychain-host/SDKStatCaches.noindex
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-keychain-host-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ hashFiles('Tests/KeychainHost/project.yml', 'Tests/KeychainHost/App/**', 'Tests/SwiftyChainTests/DataProtectionIntegrationTests.swift', 'Sources/**', 'scripts/run-keychain-host-tests.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.4.1-keychain-host-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}-
+
+      - name: Test the data-protection keychain on iOS
+        env:
+          SIMULATOR_COUNT: "1"
+          SIMULATOR_RUNTIME: "26.4"
+          RESULT_BUNDLE_PATH: ${{ runner.temp }}/keychain-host.xcresult
         run: scripts/run-keychain-host-tests.sh ios
+
+      - name: Upload iOS test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: keychain-host-ios-results
+          path: ${{ runner.temp }}/keychain-host.xcresult
+          if-no-files-found: ignore
 
   documentation:
     runs-on: macos-26-intel
