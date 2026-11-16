@@ -270,11 +270,14 @@
             let ref = CryptoKeyReference<StoredSecKey>(tag: "tests.crypto.apple.upsert.\(UUID().uuidString)")
             let first = try makeECKey()
             let second = try makeECKey()
+            var operation = "initial upsert"
             do {
                 try await keychain.upsertCryptoKey(StoredSecKey(first), for: ref)
+                operation = "initial load"
                 let original = try await keychain.loadCryptoKey(keyRef: ref)
                 let originalData = try #require(SecKeyCopyExternalRepresentation(original.rawValue, nil))
                 #expect(originalData == SecKeyCopyExternalRepresentation(first, nil))
+                operation = "replacement upsert"
                 await #expect(
                     throws: KeychainError.invalidArgument(
                         "The macOS legacy store cannot replace cryptographic key material in place; use the data-protection store"
@@ -282,12 +285,15 @@
                 ) {
                     try await keychain.upsertCryptoKey(StoredSecKey(second), for: ref)
                 }
+                operation = "load after rejected update"
                 let stored = try await keychain.loadCryptoKey(keyRef: ref)
                 let data = try #require(SecKeyCopyExternalRepresentation(stored.rawValue, nil))
                 #expect(data == originalData)
+                operation = "cleanup"
                 try await keychain.deleteCryptoKey(keyRef: ref)
             } catch {
                 try? await keychain.deleteCryptoKey(keyRef: ref)
+                Issue.record("Legacy crypto key test failed during \(operation): \(error)")
                 throw error
             }
         }
