@@ -93,14 +93,14 @@ Before opening a PR:
 4. DocC comments updated for any changed public API.
 5. Open PR against `main`; CI runs automatically.
 
-## Out of Scope (v1.0)
+## Out of Scope
 
-The following are **not** accepted in v1.0:
+The following are **not** accepted right now:
 
-- **New platform backends without a maintainer plan** — Linux is supported through the Secret Service. A backend for another platform, such as Windows Credential Manager, is welcome as a proposal first: open an issue describing how it maps to `SecureStorageBackend` and how CI will exercise it.
-- **`kSecClassCertificate` / `kSecClassIdentity`** — planned v1.1+ based on user demand.
-- **Keychain migration utilities** — planned v1.1+ (bulk-migrate items between services/accounts/formats).
-- **macOS-only legacy keychain APIs** (`SecKeychainCreate`, ACLs) — use `SecItem*` uniformly.
+- **New platform backends without a maintainer plan** — Linux is supported through the Secret Service. A backend for another platform, such as Windows Credential Manager, is welcome as a proposal first: open an issue describing how it maps to `KeychainBackend` and how CI will exercise it.
+- **`kSecClassCertificate` / `kSecClassIdentity`** — may come in a later 2.x release based on user demand.
+- **Keychain migration utilities** — may come in a later 2.x release (bulk-migrate items between services/accounts/formats).
+- **macOS-only legacy keychain APIs** (`SecKeychainCreate`, legacy ACLs) — use `SecItem*` uniformly. Access control goes through `KeychainAccessControl` on the data-protection store.
 
 ## Code of Conduct
 

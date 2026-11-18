@@ -126,7 +126,9 @@ environment variable, then pass it to `@KeychainScope`:
 ```swift
 // AppDependencies.swift — in the app target
 import SwiftyChain
-import SwiftyChainTesting   // guarded by #if DEBUG
+#if DEBUG
+import SwiftyChainTesting
+#endif
 
 enum AppDependencies {
     static let keychain: any KeychainProtocol = {

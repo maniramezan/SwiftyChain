@@ -21,7 +21,8 @@ import SwiftyChain
 /// let key = KeychainKey<String>(service: "com.example", account: "token")
 ///
 /// try await keychain.upsert("secret", for: key)
-/// let value = try await keychain.load(key: key) // "secret"
+/// // value == "secret"
+/// let value = try await keychain.load(key: key)
 /// ```
 ///
 /// Each instance starts empty. Create a fresh one per test to guarantee isolation.

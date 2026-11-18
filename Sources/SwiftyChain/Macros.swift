@@ -40,9 +40,12 @@ public macro keychainKey<Value: KeychainStorable>(
 /// let secrets = AppSecrets()
 /// let logger = Logger(subsystem: "com.example.myapp", category: "Keychain")
 ///
-/// try await secrets.setAuthToken("abc123")  // saves to keychain
-/// let token = try await secrets.authToken    // loads; nil if absent
-/// try await secrets.setAuthToken(nil)        // deletes from keychain
+/// // Saves to the keychain.
+/// try await secrets.setAuthToken("abc123")
+/// // Loads; nil if absent.
+/// let token = try await secrets.authToken
+/// // Deletes from the keychain.
+/// try await secrets.setAuthToken(nil)
 /// ```
 @attached(accessor)
 @attached(peer, names: prefixed(_), arbitrary)

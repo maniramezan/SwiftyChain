@@ -28,5 +28,5 @@ SwiftyChain upholds these invariants in every release:
 1. **No in-memory caching** — every read hits the keychain directly; values are never retained between calls.
 2. **No value logging** — errors may log `OSStatus` codes but never the secret value or its `Data` representation.
 3. **Strict Sendable** — no shared mutable state outside the `Keychain` actor boundary.
-4. **Explicit accessibility** — `KeychainAccessibility` is always set; no silent fallback to insecure defaults.
+4. **No silently weakened accessibility** — a new item without an explicit `KeychainAccessibility` gets the platform default (`kSecAttrAccessibleWhenUnlocked` on Apple platforms), and an update without one keeps the item's existing policy. SwiftyChain never substitutes a weaker policy than the one you pass.
 5. **No force unwraps** — optional values are never force-unwrapped. The one `CFTypeRef`-to-`SecKey` cast is guarded by a Core Foundation type-ID check before bridging.
