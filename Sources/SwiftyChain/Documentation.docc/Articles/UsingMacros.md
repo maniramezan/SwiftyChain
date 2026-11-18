@@ -24,11 +24,15 @@ final class Secrets {
 }
 
 let secrets = Secrets()
-try await secrets.setApiToken("abc123")   // saves to keychain
-let token = try await secrets.apiToken    // loads; nil if absent
-try await secrets.setApiToken(nil)        // deletes
+// Saves to the keychain.
+try await secrets.setApiToken("abc123")
+// Loads; nil if absent.
+let token = try await secrets.apiToken
+// Deletes.
+try await secrets.setApiToken(nil)
 
-try await Secrets.deleteAll()             // bulk-deletes all items for the service
+// Bulk-deletes all items for the service.
+try await Secrets.deleteAll()
 ```
 
 The scope macro adds a `static func deleteAll()` to the annotated type.
@@ -88,7 +92,9 @@ an `InMemoryKeychain` based on a launch-time signal:
 ```swift
 // AppDependencies.swift — compiled into the app target
 import SwiftyChain
-import SwiftyChainTesting   // only in DEBUG builds
+#if DEBUG
+import SwiftyChainTesting
+#endif
 
 enum AppDependencies {
     static let keychain: any KeychainProtocol = {
