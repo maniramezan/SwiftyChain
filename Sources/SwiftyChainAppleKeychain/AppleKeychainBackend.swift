@@ -45,7 +45,8 @@
 
         package func add(_ query: KeychainQuery, attributes: KeychainAttributes) throws {
             logSecurityCall("SecItemAdd", query: query)
-            try mapStatus(SecItemAdd(try addQuery(from: query, attributes: attributes) as CFDictionary, nil))
+            let secAttributes = try addQuery(from: query, attributes: attributes) as CFDictionary
+            try mapStatus(write { SecItemAdd(secAttributes, nil) })
             SwiftyChainLoggers.backend.debug("SecItemAdd succeeded")
         }
 
@@ -107,11 +108,8 @@
             if attributes.accessControl != nil, attributes.accessibility == nil {
                 storedProtection = try self.storedProtection(matching: match)
             }
-            let status = SecItemUpdate(
-                match as CFDictionary,
-                try updateAttributes(from: attributes, storedProtection: storedProtection) as CFDictionary
-            )
-            try mapStatus(status)
+            let changes = try updateAttributes(from: attributes, storedProtection: storedProtection) as CFDictionary
+            try mapStatus(write { SecItemUpdate(match as CFDictionary, changes) })
             SwiftyChainLoggers.backend.debug("SecItemUpdate succeeded")
         }
 
@@ -130,7 +128,7 @@
         fileprivate func deleteEveryMatch(_ attributes: [String: Any]) throws {
             let attributes = attributes as CFDictionary
             for _ in 0..<deleteSafetyCap {
-                let status = SecItemDelete(attributes)
+                let status = write { SecItemDelete(attributes) }
                 if status == errSecItemNotFound {
                     SwiftyChainLoggers.backend.debug("SecItemDelete completed")
                     return
@@ -292,6 +290,18 @@
         }
 
         private var deleteSafetyCap: Int { 10_000 }
+
+        /// Runs a Security call that writes to the keychain. On the macOS legacy store it
+        /// goes through ``LegacyStoreWriteGate``, exclusively for a key add.
+        private func write<T>(exclusively: Bool = false, _ body: () throws -> T) rethrows -> T {
+            #if os(macOS)
+                if configuration.macOSStore == .legacy {
+                    let gate = LegacyStoreWriteGate.shared
+                    return try exclusively ? gate.exclusive(body) : gate.shared(body)
+                }
+            #endif
+            return try body()
+        }
 
         // Query used to find existing items. When the caller leaves
         // `isSynchronizable` unset, match both synchronizable and local items:
@@ -481,19 +491,49 @@
                 // The keychain's uniqueness rule for keys includes the public-key hash, type,
                 // and size, so SecItemAdd accepts a second, different key under the same tag.
                 // SwiftyChain identifies a key by tag and access group, so it checks first.
-                if try itemExists(matching: cryptoSecQuery(from: query)) {
-                    SwiftyChainLoggers.backend.debug("SecItemAdd skipped: a key with this tag already exists")
-                    throw KeychainError.duplicateItem
-                }
                 var attributes = cryptoSecQuery(from: query)
                 attributes[kSecValueRef as String] = key
                 attributes.merge(
                     try protectionAttributes(
                         accessibility: keyAttributes.accessibility, accessControl: keyAttributes.accessControl)
                 ) { _, new in new }
-                let status = SecItemAdd(attributes as CFDictionary, nil)
-                try mapStatus(status)
+                try write(exclusively: true) {
+                    if try itemExists(matching: cryptoSecQuery(from: query)) {
+                        SwiftyChainLoggers.backend.debug("SecItemAdd skipped: a key with this tag already exists")
+                        throw KeychainError.duplicateItem
+                    }
+                    try mapStatus(addCryptoKeyRetryingInterruptedImports(attributes as CFDictionary))
+                }
             }
+
+            /// Adds a key, retrying when the macOS legacy store loses track of its own import.
+            ///
+            /// ``LegacyStoreWriteGate`` keeps SwiftyChain's writes from interrupting a key add,
+            /// but code that calls the Security framework directly from the same process can
+            /// still commit a write between the import and its attribute lookup. That add
+            /// fails with `errSecItemNotFound` and stores nothing, so it is safe to repeat.
+            private func addCryptoKeyRetryingInterruptedImports(_ attributes: CFDictionary) -> OSStatus {
+                var status = SecItemAdd(attributes, nil)
+                #if os(macOS)
+                    guard configuration.macOSStore == .legacy else { return status }
+                    var retries = 0
+                    while status == errSecItemNotFound, retries < Self.interruptedImportRetryLimit {
+                        retries += 1
+                        SwiftyChainLoggers.backend.debug(
+                            "SecItemAdd lost its legacy-store import; retry \(retries, privacy: .public)"
+                        )
+                        status = SecItemAdd(attributes, nil)
+                    }
+                    if status == errSecItemNotFound {
+                        SwiftyChainLoggers.backend.error(
+                            "SecItemAdd lost its legacy-store import after \(retries, privacy: .public) retries"
+                        )
+                    }
+                #endif
+                return status
+            }
+
+            private static var interruptedImportRetryLimit: Int { 8 }
 
             package func updateCryptoKey(_ key: SecKey, query: CryptoKeyQuery, attributes: CryptoKeyAttributes) throws {
                 #if os(macOS)
@@ -537,7 +577,7 @@
                 if let label = replacementAttributes[kSecAttrApplicationLabel as String] {
                     changes[kSecAttrApplicationLabel as String] = label
                 }
-                try mapStatus(SecItemUpdate(sameShape as CFDictionary, changes as CFDictionary))
+                try mapStatus(write { SecItemUpdate(sameShape as CFDictionary, changes as CFDictionary) })
             }
 
             /// The type, class, and size from a key's attributes, as query attributes that
