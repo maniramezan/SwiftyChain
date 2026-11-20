@@ -3,7 +3,9 @@
     import Security
     import SwiftyChainCore
 
-    #if canImport(LocalAuthentication)
+    // The tvOS Simulator SDK has a LocalAuthentication module whose LAContext is
+    // unavailable on tvOS, so canImport alone isn't enough.
+    #if canImport(LocalAuthentication) && !os(tvOS)
         import LocalAuthentication
     #endif
 
@@ -226,7 +228,7 @@
         private func itemExists(matching match: [String: Any]) throws -> Bool {
             var probe = match
             probe[kSecMatchLimit as String] = kSecMatchLimitOne
-            #if canImport(LocalAuthentication)
+            #if canImport(LocalAuthentication) && !os(tvOS)
                 let context = LAContext()
                 context.interactionNotAllowed = true
                 probe[kSecUseAuthenticationContext as String] = context
