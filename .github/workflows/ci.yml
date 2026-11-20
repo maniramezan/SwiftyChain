@@ -180,6 +180,53 @@ jobs:
           path: ${{ runner.temp }}/keychain-host.xcresult
           if-no-files-found: ignore
 
+  # SwiftPM on macOS builds only for macOS, and the host job only for iOS, so this
+  # compiles the package for every other Apple platform. The tvOS Simulator SDK, for
+  # example, has APIs the tvOS device SDK doesn't, and the reverse.
+  apple-platforms:
+    name: apple-platforms (${{ matrix.platform }})
+    runs-on: macos-26
+    timeout-minutes: 45
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - iOS
+          - iOS Simulator
+          - macOS,variant=Mac Catalyst
+          - tvOS
+          - tvOS Simulator
+          - watchOS
+          - watchOS Simulator
+          - visionOS
+          - visionOS Simulator
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode 26.4.1
+        run: sudo xcode-select -s "${XCODE_PATH}"
+
+      # xcodebuild has no trait flag, so the trait build passes the conditions the
+      # traits define, as the keychain-host script does.
+      - name: Build (default traits, then all traits)
+        run: |
+          for flags in "" "-DCryptography -DObservation"; do
+            xcodebuild build \
+              -scheme SwiftyChain-Package \
+              -destination "generic/platform=${{ matrix.platform }}" \
+              -derivedDataPath .build/xcode \
+              CODE_SIGNING_ALLOWED=NO \
+              OTHER_SWIFT_FLAGS="\$(inherited) ${flags}" \
+              | tee build.log
+            status=${PIPESTATUS[0]}
+            if [ "$status" -ne 0 ]; then exit "$status"; fi
+            if grep -E "/Sources/[^ ]+: warning:" build.log; then
+              echo "::error::SwiftyChain sources produced warnings"
+              exit 1
+            fi
+          done
+
   documentation:
     runs-on: macos-26-intel
     timeout-minutes: 30

@@ -86,7 +86,7 @@ except subprocess.TimeoutExpired:
             -parallel-testing-enabled "$parallel_testing" \
             -parallel-testing-worker-count "$count" \
             -derivedDataPath "$derived" \
-            "${result_args[@]}" \
+            ${result_args[@]+"${result_args[@]}"} \
             OTHER_SWIFT_FLAGS="$trait_flags"
         if [[ -n "${RESULT_BUNDLE_PATH:-}" ]]; then
             xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE_PATH" --format json | python3 -c '

@@ -142,7 +142,7 @@ The Swift macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are include
 | Trait | Feature | Enable when |
 |-------|---------|-------------|
 | `cryptography` | `kSecClassKey` support — store, load, and manage `SecKey` objects (Apple platforms only) | You need to sign/verify data or work with cryptographic keys |
-| `observation` | `AsyncSequence`-based keychain change stream + `@Observable` integration | You need to react to keychain changes in real time |
+| `observation` | An `AsyncStream` of keychain changes for a service or server | You need to react to keychain changes in real time |
 
 Enable traits in your consuming `Package.swift`:
 

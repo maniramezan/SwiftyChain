@@ -61,12 +61,13 @@ struct SessionStore {
 ### Non-Optional Access
 
 When the property should always have a concrete value, use `@KeychainItem`.
-The macro inspects the declared type and generates a non-throwing load that
-returns the value directly:
+The macro inspects the declared type: for a non-optional property it generates an
+`async throws` getter that calls ``Keychain/load(key:)`` and throws
+``KeychainError/itemNotFound`` when the item is absent:
 
 ```swift
 @KeychainScope(service: "com.example.myapp")
-class Preferences {
+struct Preferences {
     @KeychainItem("has-onboarded")
     var hasOnboarded: Bool
 }
