@@ -15,7 +15,7 @@ stored under that service:
 
 ```swift
 @KeychainScope(service: "com.example.app")
-final class Secrets {
+struct Secrets {
     @KeychainItem("api-token")
     var apiToken: String?
 
@@ -38,6 +38,12 @@ try await Secrets.deleteAll()
 The scope macro adds a `static func deleteAll()` to the annotated type.
 `@KeychainItem` properties inside a scope omit `service:` —
 the scope injects it automatically into every generated ``KeychainKey``.
+
+> Important: In the Swift 6 language mode, declare macro-annotated types as `Sendable`:
+> an internal `struct`, an `actor`, a `@MainActor` type, or a `final class` marked
+> `Sendable`. The generated accessors are `async` and not isolated to an actor, so code on
+> the main actor can't call them on a non-`Sendable` type, such as a plain class or a
+> `public struct`. Targets that default to main-actor isolation aren't affected.
 
 ### @KeychainItem
 
@@ -80,7 +86,7 @@ it defaults to `Keychain.shared`.
 
 ```swift
 @KeychainScope(service: "com.example.app", keychain: AppDependencies.keychain)
-final class Secrets {
+struct Secrets {
     @KeychainItem("api-token")
     var apiToken: String?
 }

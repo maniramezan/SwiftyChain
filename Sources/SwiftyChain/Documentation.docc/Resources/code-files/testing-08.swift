@@ -13,7 +13,7 @@ enum AppDependencies {
 }
 
 @KeychainScope(service: "com.example.myapp", keychain: AppDependencies.keychain)
-final class Secrets {
+struct Secrets {
     @KeychainItem("api-token")
     var apiToken: String?
 }
