@@ -115,6 +115,16 @@
                         guard !handles.isEmpty else {
                             throw KeychainError.itemNotFound
                         }
+                        // KWallet answers GetSecret and SetSecret on a closed wallet without
+                        // an error, so a dismissed unlock prompt would otherwise turn into an
+                        // update that reports success and writes nothing.
+                        if handles.contains(where: {
+                            swiftychain_secret_item_is_service_item($0) != 0
+                                && swiftychain_secret_item_is_locked($0) != 0
+                        }) {
+                            SwiftyChainLoggers.backend.debug("Secret Service update found a match that stays locked")
+                            throw KeychainError.interactionNotAllowed
+                        }
                         var originals: [StoredItem] = []
                         for handle in handles {
                             guard
