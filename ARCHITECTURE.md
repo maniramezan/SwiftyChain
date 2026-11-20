@@ -62,6 +62,14 @@ uses delete-and-add. The macOS legacy store rejects material replacement: experi
 updates either failed or reported success while reads retained the original material. Use
 the data-protection store for updates. Non-exportable replacement material is rejected.
 
+The legacy store adds a key in two steps, an import and then a lookup of that import, and a
+write committed by another thread of the same process between them makes the add fail with
+`errSecItemNotFound`. `LegacyStoreWriteGate` orders the process's legacy writes so none
+overlaps a key add; password writes still run alongside each other. Code that calls the
+Security framework directly can still interrupt an add, so a key add that loses its import
+is retried a few times; a failed add stores nothing. The data-protection store and other
+Apple platforms are unaffected.
+
 ## Verification
 
 Contract fixtures cover memory, Linux emulation, and opted-in real platform backends.

@@ -106,6 +106,19 @@ jobs:
             exit 1
           }
 
+      # Key adds in the macOS legacy store fail when another thread writes mid-add; this
+      # proves SwiftyChain's own concurrent writes no longer interrupt them.
+      - name: Stress legacy-store key adds against concurrent writes
+        env:
+          SWIFTYCHAIN_RUN_KEYCHAIN_STRESS: "1"
+          SWIFTYCHAIN_STRESS_MODE: passwords
+          SWIFTYCHAIN_STRESS_ITERATIONS: "50"
+        run: |
+          xcrun swift test \
+            --traits "${TRAITS}" \
+            -Xswiftc -warnings-as-errors \
+            --filter LegacyCryptoStressTests
+
       - name: Upload coverage artifacts
         if: always()
         uses: actions/upload-artifact@v7
