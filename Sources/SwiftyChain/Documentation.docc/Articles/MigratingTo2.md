@@ -45,7 +45,7 @@ throws `duplicateItem`, whatever the new key's material or type.
 
 ### Errors
 
-Rename `interactionNotAllowed` to ``KeychainError/interactionNotAllowed``. It usually means
+Rename `userPresenceRequired` to ``KeychainError/interactionNotAllowed``. It usually means
 locked storage or unavailable interaction, rather than a biometric requirement.
 ``KeychainError/userCanceled`` distinguishes explicit cancellation from failed authentication.
 On Linux, cancellation from SwiftyChain's own timer stays ``KeychainError/timedOut``; an
