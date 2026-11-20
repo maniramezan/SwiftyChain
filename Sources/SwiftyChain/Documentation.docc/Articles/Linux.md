@@ -24,7 +24,9 @@ so building needs no extra packages. To store secrets, the machine running your 
 
 - libsecret 0.19 or newer: `libsecret-1-0` on Debian and Ubuntu, `libsecret` on Fedora.
 - A D-Bus session bus.
-- A running Secret Service provider, such as GNOME Keyring or KWallet.
+- A running Secret Service provider, such as GNOME Keyring or KWallet. KWallet provides
+  the Secret Service from KDE Frameworks 5.97, when its Secret Service interface is
+  enabled; older KWallet releases don't, so SwiftyChain reports no provider.
 
 The binary must also be dynamically linked: one built with the Static Linux SDK (musl)
 can't load libsecret, and every call throws ``KeychainError/platformUnsupported(_:)``

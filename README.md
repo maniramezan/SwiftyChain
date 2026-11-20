@@ -83,7 +83,8 @@ Secret Service through libsecret. Nothing extra is needed to build. At runtime t
 machine needs:
 
 - libsecret (`libsecret-1-0` on Debian and Ubuntu, `libsecret` on Fedora), and
-- a D-Bus session with a Secret Service provider, such as GNOME Keyring or KWallet.
+- a D-Bus session with a Secret Service provider, such as GNOME Keyring or KWallet
+  (KDE Frameworks 5.97 or newer, with its Secret Service interface enabled).
 
 If any of these is missing, every call throws `KeychainError.platformUnsupported` with
 the reason. SwiftyChain never falls back to plaintext. Headless servers usually have no
