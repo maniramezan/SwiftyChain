@@ -130,6 +130,11 @@ public struct KeychainItemMacro: AccessorMacro, PeerMacro {
             {
                 return scope
             }
+            if let attributes = node.as(ActorDeclSyntax.self)?.attributes,
+                let scope = scopeValues(from: attributes)
+            {
+                return scope
+            }
         }
         return nil
     }
