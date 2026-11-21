@@ -6,6 +6,9 @@ Update custom backends, key policies, error handling, and observation for Swifty
 
 Version 2.0.0 has breaking API changes. No item migration happens automatically.
 
+On Apple platforms, the new minimum deployment targets are macOS 15, iOS and iPadOS 18,
+Mac Catalyst 18, tvOS 18, watchOS 11, and visionOS 2. The package still requires Swift 6.3 or later.
+
 ### Custom backends
 
 Replace the four-method backend with ``KeychainBackend``: `capabilities`, `add`, `data`,

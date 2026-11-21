@@ -211,18 +211,17 @@ func testDashboardAppearsWhenAlreadyLoggedIn() {
 
 ## Test Observation (requires `observation` trait)
 
-When the `observation` trait is enabled, `InMemoryKeychain` fully implements
+Enable `observation` on the SwiftyChain package dependency in your `Package.swift`.
+Include both `SwiftyChain` and `SwiftyChainTesting` as product dependencies of your test target.
+With the trait enabled, `InMemoryKeychain` implements
 ``KeychainObserving/observeKeychainChanges(service:accessGroup:)``. Events are emitted
 synchronously during each mutation, so you can drive and observe changes in the same test:
 
 ```swift
-// Package.swift — enable the trait in your test target
-.testTarget(
-    name: "MyFeatureTests",
-    dependencies: [
-        .product(name: "SwiftyChain", package: "SwiftyChain", traits: ["observation"]),
-        .product(name: "SwiftyChainTesting", package: "SwiftyChain", traits: ["observation"]),
-    ]
+.package(
+    url: "https://github.com/maniramezan/SwiftyChain",
+    from: "2.0.0",
+    traits: ["observation"]
 )
 ```
 
@@ -231,37 +230,30 @@ import SwiftyChain
 import SwiftyChainTesting
 import Testing
 
-@Test func emitsEventOnUpsert() async throws {
+@Test(.timeLimit(.minutes(1)))
+func emitsEventOnUpsert() async throws {
     let keychain = InMemoryKeychain()
     let key = KeychainKey<String>(service: "com.example", account: "token")
-    var events: [KeychainChangeEvent] = []
-
     let stream = await keychain.observeKeychainChanges(service: "com.example")
-    let task = Task {
-        for await event in stream { events.append(event) }
-    }
 
     try await keychain.upsert("v1", for: key)
     try await keychain.upsert("v2", for: key)
-    task.cancel()
-
-    #expect(events.map(\.kind) == [.saved, .updated])
+    var iterator = stream.makeAsyncIterator()
+    #expect(await iterator.next()?.kind == .saved)
+    #expect(await iterator.next()?.kind == .updated)
 }
 ```
 
 ## Test Cryptographic Keys (requires `cryptography` trait, Apple platforms)
 
-When the `cryptography` trait is enabled, `InMemoryKeychain` implements the crypto-key
-CRUD operations:
+Enable `cryptography` on the SwiftyChain package dependency to test crypto-key operations
+with `InMemoryKeychain` on Apple platforms:
 
 ```swift
-// Package.swift — enable the trait in your test target
-.testTarget(
-    name: "MyFeatureTests",
-    dependencies: [
-        .product(name: "SwiftyChain", package: "SwiftyChain", traits: ["cryptography"]),
-        .product(name: "SwiftyChainTesting", package: "SwiftyChain", traits: ["cryptography"]),
-    ]
+.package(
+    url: "https://github.com/maniramezan/SwiftyChain",
+    from: "2.0.0",
+    traits: ["cryptography"]
 )
 ```
 

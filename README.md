@@ -148,7 +148,7 @@ The Swift macros (`@KeychainItem`, `@KeychainScope`, `#keychainKey`) are include
 Enable traits in your consuming `Package.swift`:
 
 ```swift
-.product(name: "SwiftyChain", package: "SwiftyChain", traits: ["observation"])
+.package(url: "https://github.com/maniramezan/SwiftyChain", from: "2.0.0", traits: ["observation"])
 ```
 
 Or when running tests locally:

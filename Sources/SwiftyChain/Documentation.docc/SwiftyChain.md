@@ -44,12 +44,12 @@ Traits are unified across your whole dependency graph: if any package enables on
 package sees it. Trait-gated requirements therefore live in their own protocols rather than
 in ``KeychainProtocol``, so a dependency turning on a trait never breaks your own conformances.
 
-Enable traits by passing them to the product dependency:
+Enable traits on the package dependency in your `Package.swift`:
 
 ```swift
-.product(
-    name: "SwiftyChain",
-    package: "SwiftyChain",
+.package(
+    url: "https://github.com/maniramezan/SwiftyChain",
+    from: "2.0.0",
     traits: ["observation", "cryptography"]
 )
 ```
