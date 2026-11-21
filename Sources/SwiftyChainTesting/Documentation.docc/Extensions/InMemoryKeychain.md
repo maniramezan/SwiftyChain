@@ -34,21 +34,15 @@ import SwiftyChain
 import SwiftyChainTesting
 import Testing
 
-@Test func emitsChangeEvent() async throws {
+@Test(.timeLimit(.minutes(1)))
+func emitsChangeEvent() async throws {
     let keychain = InMemoryKeychain()
     let key = KeychainKey<String>(service: "com.example", account: "token")
-    var events: [KeychainChangeEvent] = []
-
     let stream = await keychain.observeKeychainChanges(service: "com.example")
-    let task = Task {
-        for await event in stream { events.append(event) }
-    }
 
     try await keychain.upsert("secret", for: key)
-    task.cancel()
-
-    #expect(events.count == 1)
-    #expect(events[0].kind == .saved)
+    var iterator = stream.makeAsyncIterator()
+    #expect(await iterator.next()?.kind == .saved)
 }
 ```
 
